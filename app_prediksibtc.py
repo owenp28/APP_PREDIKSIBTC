@@ -79,15 +79,41 @@ with st.spinner("Loading Bitcoin data..."):
     data = load_data()
 
 # Display current Bitcoin price in sidebar with better styling
-current_price = data["Price"].iloc[-1]
+from data_load import get_current_bitcoin_price
+
+# Get real-time price from CoinMarketCap
+current_price = get_current_bitcoin_price()
+last_price = data["Price"].iloc[-1]
+
+# Add auto-refresh for current price
+if st.sidebar.button("🔄 Refresh Price"):
+    current_price = get_current_bitcoin_price()
+    st.sidebar.success("Price updated!")
+
+# Display current price with timestamp
 st.sidebar.markdown("<h3>Current Bitcoin Price</h3>", unsafe_allow_html=True)
 st.sidebar.markdown(
     f"<div><h2 style='color: #3366CC; margin:0;'>${current_price:,.2f}</h2></div>", 
     unsafe_allow_html=True
 )
+st.sidebar.markdown(
+    f"<div style='font-size:0.8em; color:#666;'>Last updated: {datetime.datetime.now().strftime('%H:%M:%S')}</div>",
+    unsafe_allow_html=True
+)
+
+# Show price change from historical data
+price_change = ((current_price - last_price) / last_price) * 100
+change_color = "#66CC33" if price_change >= 0 else "#CC3366"
+st.sidebar.markdown(
+    f"<div style='color:{change_color};'>{'▲' if price_change >= 0 else '▼'} {abs(price_change):.2f}%</div>",
+    unsafe_allow_html=True
+)
 
 # Get trading recommendations based on technical analysis
 trading_rec = get_trading_recommendation(data)
+
+# Update data with current price for better predictions
+data.loc[data.index[-1], "Price"] = current_price
 
 # Preprocess data
 with st.spinner("Processing data..."):

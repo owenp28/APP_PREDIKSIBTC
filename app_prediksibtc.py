@@ -603,8 +603,29 @@ with tab4:
     # Get portfolio data with caching
     @st.cache_data(ttl=300)  # Cache for 5 minutes
     def load_portfolio_data():
-        with st.spinner("Loading portfolio data..."):
-            return get_portfolio_data()
+        try:
+            with st.spinner("Loading portfolio data..."):
+                return get_portfolio_data()
+        except Exception as e:
+            st.error(f"Error loading portfolio data: {e}")
+            # Return dummy data as fallback
+            dummy_allocation = pd.DataFrame({
+                'Ticker': ['VTI', 'VNQ', 'VXUS', 'BND', 'BTC-USD'],
+                'Name': ['Vanguard Total Stock Market ETF', 'Vanguard Real Estate ETF', 
+                         'Vanguard Total International Stock ETF', 'Vanguard Total Bond Market ETF', 'Bitcoin'],
+                'Allocation': [20.0, 20.0, 20.0, 20.0, 20.0]
+            })
+            
+            dummy_metrics = pd.DataFrame(
+                index=['VTI', 'VNQ', 'VXUS', 'BND', 'BTC-USD'],
+                data={
+                    'Annualized Return': [0.15, 0.08, 0.10, 0.04, 0.25],
+                    'Standard Deviation': [0.18, 0.22, 0.20, 0.05, 0.65],
+                    'Maximum Drawdown': [-0.25, -0.30, -0.28, -0.10, -0.55],
+                    'Benchmark Relative': [0.03, -0.04, -0.02, -0.08, 0.13]
+                }
+            )
+            return dummy_allocation, dummy_metrics
     
     allocation, metrics = load_portfolio_data()
     

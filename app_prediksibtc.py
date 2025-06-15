@@ -1,12 +1,12 @@
 import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import datetime
 import plotly.graph_objects as go
-from data_load import load_data, get_trading_recommendation
+from data_load import load_data, get_trading_recommendation, get_current_bitcoin_price
 from train_model import preprocess_data, train_model
 from prediction_btc import make_predictions
+from trading_signals import get_combined_trading_signals
 
 # Set page configuration and custom theme
 st.set_page_config(
@@ -73,13 +73,12 @@ st.markdown("""
 
 # App title with better styling
 st.markdown("<h1 style='text-align: center;'>Bitcoin Price Prediction App</h1>", unsafe_allow_html=True)
-
 # Load and preprocess data
 with st.spinner("Loading Bitcoin data..."):
     data = load_data()
-
-# Display current Bitcoin price in sidebar with better styling
-from data_load import get_current_bitcoin_price
+    # Ensure 'Date' column is datetime for plotting
+    if 'Date' in data.columns and not np.issubdtype(data['Date'].dtype, np.datetime64):
+        data['Date'] = pd.to_datetime(data['Date'])
 
 # Get real-time price from CoinMarketCap
 current_price = get_current_bitcoin_price()
@@ -112,6 +111,9 @@ st.sidebar.markdown(
 # Get trading recommendations based on technical analysis
 trading_rec = get_trading_recommendation(data)
 
+# Get advanced trading signals
+advanced_signals = get_combined_trading_signals(data)
+
 # Update data with current price for better predictions
 data.loc[data.index[-1], "Price"] = current_price
 
@@ -121,7 +123,7 @@ with st.spinner("Processing data..."):
     model, mse, features = train_model(processed_data)
 
 # Main content in tabs for better organization
-tab1, tab2, tab3 = st.tabs(["📈 Price Analysis", "💰 Investment Calculator", "ℹ️ About"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Price Analysis", "📊 Advanced Trading", "💰 Investment Calculator", "📊 Portfolio Analysis", "ℹ️ About"])
 
 with tab1:
     # Historical and predicted prices
@@ -184,11 +186,12 @@ with tab1:
         )
         
         st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("<h4>Future Price Predictions</h4>", unsafe_allow_html=True)
+        
         days_ahead = st.slider("Days to predict ahead:", 7, 60, 30, key="days_slider")
         prediction_data = make_predictions(model, scaler, features, days_ahead)
+        # Ensure 'Date' column is datetime for plotting
+        if 'Date' in prediction_data.columns and not np.issubdtype(prediction_data['Date'].dtype, np.datetime64):
+            prediction_data['Date'] = pd.to_datetime(prediction_data['Date'])
         
         # Add some volatility to make the predictions more realistic
         np.random.seed(42)  # For reproducibility
@@ -203,6 +206,9 @@ with tab1:
         
         # Calculate predicted price changes
         prediction_data['Price_Change'] = prediction_data['Predicted_Price'].diff()
+    
+    with col2:
+        st.markdown("<h4>Predicted Bitcoin Prices</h4>", unsafe_allow_html=True)
         
         # Create enhanced prediction chart with Plotly
         fig = go.Figure()
@@ -321,126 +327,164 @@ with tab1:
     )
     
     st.plotly_chart(fig, use_container_width=True)
+
+with tab2:
+    # Advanced Trading Analysis
+    st.markdown("<h3>Advanced Trading Analysis</h3>", unsafe_allow_html=True)
     
-    # Technical indicators section
-    st.markdown("<h3>Technical Analysis</h3>", unsafe_allow_html=True)
-    
+    # Price Action and Patterns
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("<h4>Key Indicators</h4>", unsafe_allow_html=True)
+        st.markdown("<h4>Price Action Signals</h4>", unsafe_allow_html=True)
         
-        # Display RSI
-        rsi_color = "#66CC33" if trading_rec["rsi"] < 70 else "#CC3366"
-        st.markdown(
-            f"""<div>
-                <h4>RSI (Relative Strength Index)</h4>
-                <p style='color:{rsi_color}; font-size:1.5em;'>{trading_rec["rsi"]:.2f}</p>
-                <p style='font-size:0.8em;'>{'Oversold (<30)' if trading_rec["rsi"] < 30 else 'Overbought (>70)' if trading_rec["rsi"] > 70 else 'Neutral'}</p>
-            </div>""", 
-            unsafe_allow_html=True
-        )
+        # Display detected patterns
+        if advanced_signals['latest_pattern']:
+            pattern = advanced_signals['latest_pattern']['pattern']
+            signal = advanced_signals['latest_pattern']['signal']
+            pattern_color = "#66CC33" if signal == "Buy" else "#CC3366"
+            
+            st.markdown(
+                f"""<div style='background-color:white; padding:15px; border-radius:5px; border-left:4px solid {pattern_color};'>
+                <h5 style='margin-top:0;'>Detected Pattern</h5>
+                <p style='font-size:1.2em; font-weight:bold;'>{pattern}</p>
+                <p style='color:{pattern_color};'>Signal: {signal}</p>
+                </div>""",
+                unsafe_allow_html=True
+            )
+        else:
+            st.info("No significant chart patterns detected in recent data.")
         
-        # Display MACD
-        macd_color = "#66CC33" if trading_rec["macd_histogram"] > 0 else "#CC3366"
-        st.markdown(
-            f"""<div>
-                <h4>MACD Histogram</h4>
-                <p style='color:{macd_color}; font-size:1.5em;'>{trading_rec["macd_histogram"]:.2f}</p>
-                <p style='font-size:0.8em;'>{'Bullish (>0)' if trading_rec["macd_histogram"] > 0 else 'Bearish (<0)'}</p>
-            </div>""", 
-            unsafe_allow_html=True
-        )
+        # Display support and resistance levels
+        st.markdown("<h5>Support & Resistance Levels</h5>", unsafe_allow_html=True)
+        
+        support_levels = advanced_signals['support_levels']
+        resistance_levels = advanced_signals['resistance_levels']
+        
+        if support_levels:
+            st.markdown("<p><b>Support Levels:</b></p>", unsafe_allow_html=True)
+            for level in support_levels:
+                st.markdown(f"<p style='color:#66CC33;'>${level:.2f}</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p>No significant support levels detected.</p>", unsafe_allow_html=True)
+        
+        if resistance_levels:
+            st.markdown("<p><b>Resistance Levels:</b></p>", unsafe_allow_html=True)
+            for level in resistance_levels:
+                st.markdown(f"<p style='color:#CC3366;'>${level:.2f}</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p>No significant resistance levels detected.</p>", unsafe_allow_html=True)
     
     with col2:
-        st.markdown("<h4>Moving Averages</h4>", unsafe_allow_html=True)
+        st.markdown("<h4>Order Flow Analysis</h4>", unsafe_allow_html=True)
         
-        # Display MA crossover
-        ma5 = data['MA5'].iloc[-1]
-        ma20 = data['MA20'].iloc[-1]
-        ma_signal = "Bullish" if ma5 > ma20 else "Bearish"
-        ma_color = "#66CC33" if ma5 > ma20 else "#CC3366"
+        # Display buying/selling pressure
+        buying_pressure = advanced_signals['order_flow']['buying_pressure']
+        selling_pressure = advanced_signals['order_flow']['selling_pressure']
         
-        st.markdown(
-            f"""<div>
-                <h4>MA Crossover</h4>
-                <p style='color:{ma_color}; font-size:1.5em;'>{ma_signal}</p>
-                <p style='font-size:0.8em;'>MA5: ${ma5:.2f} | MA20: ${ma20:.2f}</p>
-            </div>""", 
-            unsafe_allow_html=True
-        )
+        # Create buying/selling pressure gauge
+        fig = go.Figure()
         
-        # Display overall signal
-        signal_color = "#66CC33" if trading_rec["action"] in ["Strong Buy", "Consider Buy"] else "#FFA500" if trading_rec["action"] == "Hold" else "#CC3366"
-        st.markdown(
-            f"""<div>
-                <h4>Overall Signal</h4>
-                <p style='color:{signal_color}; font-size:1.5em;'>{trading_rec["action"]}</p>
-            </div>""", 
-            unsafe_allow_html=True
-        )
+        fig.add_trace(go.Indicator(
+            mode = "gauge+number",
+            value = buying_pressure / (buying_pressure + selling_pressure) * 100,
+            title = {'text': "Buying vs Selling Pressure"},
+            gauge = {
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "#3366CC"},
+                'steps': [
+                    {'range': [0, 40], 'color': "#CC3366"},
+                    {'range': [40, 60], 'color': "#FFA500"},
+                    {'range': [60, 100], 'color': "#66CC33"}
+                ],
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 50
+                }
+            }
+        ))
+        
+        fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Display divergence if any
+        divergence = advanced_signals['order_flow']['divergence']
+        if divergence != "None":
+            div_color = "#66CC33" if divergence == "Bullish" else "#CC3366"
+            st.markdown(
+                f"""<div style='background-color:white; padding:15px; border-radius:5px; border-left:4px solid {div_color};'>
+                <h5 style='margin-top:0;'>Order Flow Divergence</h5>
+                <p style='color:{div_color};'>{divergence} Divergence Detected</p>
+                <p>Price and volume are moving in opposite directions, indicating potential reversal.</p>
+                </div>""",
+                unsafe_allow_html=True
+            )
     
-    # Model performance metrics in a clean card
+    # Trading Signal and Recommendation
+    st.markdown("<h4>Trading Signal</h4>", unsafe_allow_html=True)
+    
+    # Determine signal color
+    signal_color = "#66CC33" if advanced_signals['action'] in ["Buy", "Strong Buy"] else "#FFA500" if advanced_signals['action'] == "Hold" else "#CC3366"
+    
+    # Create signal card
     st.markdown(
-        f"""<div>
-            <h4>Model Performance</h4>
-            <p>Mean Squared Error: {mse:.4f}</p>
-        </div>""", 
+        f"""<div style='padding:20px; border-radius:5px; text-align:center; border:2px solid {signal_color};'>
+        <h2 style='color:{signal_color}; margin-top:0;'>{advanced_signals['action']}</h2>
+        <p>Entry Price: ${advanced_signals['entry_price']:.2f}</p>
+        <p>Target Price: ${advanced_signals['target_price']:.2f}</p>
+        <p>Stop Loss: ${advanced_signals['stop_loss']:.2f}</p>
+        <p>Risk/Reward Ratio: {advanced_signals['risk_reward']:.2f}</p>
+        </div>""",
         unsafe_allow_html=True
     )
     
-    # Investment recommendation system with better styling
-    st.markdown("<h3>Investment Recommendation</h3>", unsafe_allow_html=True)
+    # Backtest Results
+    st.markdown("<h4>Backtest Results</h4>", unsafe_allow_html=True)
     
-    # Calculate price trends
-    latest_price = data["Price"].iloc[-1]
-    predicted_price_7d = prediction_data["Predicted_Price"].iloc[6]  # 7 days ahead
-    predicted_price_30d = prediction_data["Predicted_Price"].iloc[29] if len(prediction_data) >= 30 else prediction_data["Predicted_Price"].iloc[-1]
-    
-    # Calculate potential returns
-    short_term_change = (predicted_price_7d - latest_price) / latest_price * 100
-    long_term_change = (predicted_price_30d - latest_price) / latest_price * 100
-    
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown("<h4>Short-term Outlook (7 days)</h4>", unsafe_allow_html=True)
-        if short_term_change > 3:
-            st.markdown(f"<div>Strong Buy: Expected increase of {short_term_change:.2f}%</div>", unsafe_allow_html=True)
-            recommendation = "Strong Buy"
-        elif short_term_change > 0:
-            st.markdown(f"<div>Consider Buy: Expected increase of {short_term_change:.2f}%</div>", unsafe_allow_html=True)
-            recommendation = "Consider Buy"
-        elif short_term_change > -3:
-            st.markdown(f"<div>Hold: Expected change of {short_term_change:.2f}%</div>", unsafe_allow_html=True)
-            recommendation = "Hold"
-        else:
-            st.markdown(f"<div>Consider Sell: Expected decrease of {abs(short_term_change):.2f}%</div>", unsafe_allow_html=True)
-            recommendation = "Consider Sell"
+        perf = advanced_signals['backtest_performance']
+        st.metric("Total Return", f"{perf['total_return']*100:.2f}%")
     
     with col2:
-        st.markdown("<h4>Long-term Outlook (30 days)</h4>", unsafe_allow_html=True)
-        if long_term_change > 10:
-            st.markdown(f"<div>Strong Buy: Expected increase of {long_term_change:.2f}%</div>", unsafe_allow_html=True)
-        elif long_term_change > 0:
-            st.markdown(f"<div>Consider Buy: Expected increase of {long_term_change:.2f}%</div>", unsafe_allow_html=True)
-        elif long_term_change > -10:
-            st.markdown(f"<div>Hold: Expected change of {long_term_change:.2f}%</div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<div>Consider Sell: Expected decrease of {abs(long_term_change):.2f}%</div>", unsafe_allow_html=True)
+        st.metric("Max Drawdown", f"{perf['max_drawdown']*100:.2f}%")
+    
+    with col3:
+        st.metric("Win Rate", f"{perf['win_rate']*100:.2f}%")
+    
+    with col4:
+        st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
 
-with tab2:
+with tab3:
     # Investment calculator with better styling
     st.markdown("<h3>Investment Calculator</h3>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("<h4>Calculate Potential Returns</h4>", unsafe_allow_html=True)
-        investment_amount = st.number_input("Investment Amount (USD):", min_value=100, value=1000, step=100)
+        # User input for investment amount
+        investment_amount = st.number_input("Investment Amount (USD)", min_value=10.0, value=1000.0, step=10.0)
+        # Calculate BTC amount based on current price
+        btc_amount = investment_amount / current_price if current_price > 0 else 0.0
+
+        # Get predicted prices
+        days_ahead = 30
+        prediction_data = make_predictions(model, scaler, features, days_ahead)
+        # Ensure 'Date' column is datetime for plotting
+        if 'Date' in prediction_data.columns and not np.issubdtype(prediction_data['Date'].dtype, np.datetime64):
+            prediction_data['Date'] = pd.to_datetime(prediction_data['Date'])
         
-        # Calculate potential returns
-        btc_amount = investment_amount / latest_price
+        # Add volatility for more realistic predictions
+        np.random.seed(42)
+        for i in range(1, len(prediction_data)):
+            random_change = np.random.normal(0.001, 0.01)
+            prediction_data.loc[i, 'Predicted_Price'] = prediction_data.loc[i-1, 'Predicted_Price'] * (1 + random_change)
+        
+        predicted_price_7d = prediction_data["Predicted_Price"].iloc[6]  # 7 days ahead
+        predicted_price_30d = prediction_data["Predicted_Price"].iloc[29]  # 30 days ahead
+        
         potential_value_7d = btc_amount * predicted_price_7d
         potential_value_30d = btc_amount * predicted_price_30d
         
@@ -481,51 +525,38 @@ with tab2:
     
     with col2:
         # Buy/Sell price recommendations with better styling
-        st.markdown("<h4>Price Targets (Technical Analysis)</h4>", unsafe_allow_html=True)
+        st.markdown("<h4>Price Targets (Advanced Analysis)</h4>", unsafe_allow_html=True)
         
-        # Use trading recommendations from technical analysis
-        buy_price = trading_rec["optimal_buy"]
-        sell_price = trading_rec["optimal_sell"]
-        stop_loss = trading_rec["stop_loss"]
-        take_profit_short = trading_rec["take_profit_short"]
-        take_profit_long = trading_rec["take_profit_long"]
+        # Use trading recommendations from advanced analysis
+        action = advanced_signals['action']
+        entry_price = advanced_signals['entry_price']
+        target_price = advanced_signals['target_price']
+        stop_loss = advanced_signals['stop_loss']
         
-        if trading_rec["action"] in ["Strong Buy", "Consider Buy"]:
+        if "Buy" in action:
             st.markdown(
                 f"""<div style='border-left: 4px solid #3366CC;'>
                     <h4>Recommended Buy Price</h4>
-                    <p>${buy_price:.2f}</p>
-                    <p style='font-size:0.8em;'>({((buy_price - latest_price) / latest_price * 100):.2f}% from current price)</p>
+                    <p>${entry_price:.2f}</p>
+                    <p style='font-size:0.8em;'>({((entry_price - current_price) / current_price * 100):.2f}% from current price)</p>
                 </div>""", 
                 unsafe_allow_html=True
             )
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown(
-                    f"""<div style='border-left: 4px solid #66CC33;'>
-                        <h4>Short-term Target</h4>
-                        <p>${take_profit_short:.2f}</p>
-                        <p style='font-size:0.8em;'>({((take_profit_short - buy_price) / buy_price * 100):.2f}% gain)</p>
-                    </div>""", 
-                    unsafe_allow_html=True
-                )
-            
-            with col_b:
-                st.markdown(
-                    f"""<div style='border-left: 4px solid #66CC33;'>
-                        <h4>Long-term Target</h4>
-                        <p>${take_profit_long:.2f}</p>
-                        <p style='font-size:0.8em;'>({((take_profit_long - buy_price) / buy_price * 100):.2f}% gain)</p>
-                    </div>""", 
-                    unsafe_allow_html=True
-                )
+            st.markdown(
+                f"""<div style='border-left: 4px solid #66CC33;'>
+                    <h4>Target Price</h4>
+                    <p>${target_price:.2f}</p>
+                    <p style='font-size:0.8em;'>({((target_price - entry_price) / entry_price * 100):.2f}% gain)</p>
+                </div>""", 
+                unsafe_allow_html=True
+            )
             
             st.markdown(
                 f"""<div style='border-left: 4px solid #CC3366;'>
                     <h4>Stop Loss</h4>
                     <p>${stop_loss:.2f}</p>
-                    <p style='font-size:0.8em;'>({((stop_loss - buy_price) / buy_price * 100):.2f}% from buy price)</p>
+                    <p style='font-size:0.8em;'>({((stop_loss - entry_price) / entry_price * 100):.2f}% from buy price)</p>
                 </div>""", 
                 unsafe_allow_html=True
             )
@@ -533,57 +564,196 @@ with tab2:
             st.markdown(
                 f"""<div style='border-left: 4px solid #CC3366;'>
                     <h4>Recommended Sell Price</h4>
-                    <p>${sell_price:.2f}</p>
-                    <p style='font-size:0.8em;'>({((sell_price - latest_price) / latest_price * 100):.2f}% from current price)</p>
+                    <p>${entry_price:.2f}</p>
+                    <p style='font-size:0.8em;'>({((entry_price - current_price) / current_price * 100):.2f}% from current price)</p>
                 </div>""", 
                 unsafe_allow_html=True
             )
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                buy_back_short = sell_price * 0.95
-                st.markdown(
-                    f"""<div style='border-left: 4px solid #3366CC;'>
-                        <h4>Short-term Buy-back</h4>
-                        <p>${buy_back_short:.2f}</p>
-                        <p style='font-size:0.8em;'>({((buy_back_short - sell_price) / sell_price * 100):.2f}% from sell price)</p>
-                    </div>""", 
-                    unsafe_allow_html=True
-                )
+            st.markdown(
+                f"""<div style='border-left: 4px solid #3366CC;'>
+                    <h4>Target Price</h4>
+                    <p>${target_price:.2f}</p>
+                    <p style='font-size:0.8em;'>({((target_price - entry_price) / entry_price * 100):.2f}% from sell price)</p>
+                </div>""", 
+                unsafe_allow_html=True
+            )
             
-            with col_b:
-                buy_back_long = sell_price * 0.90
-                st.markdown(
-                    f"""<div style='border-left: 4px solid #3366CC;'>
-                        <h4>Long-term Buy-back</h4>
-                        <p>${buy_back_long:.2f}</p>
-                        <p style='font-size:0.8em;'>({((buy_back_long - sell_price) / sell_price * 100):.2f}% from sell price)</p>
-                    </div>""", 
-                    unsafe_allow_html=True
-                )
+            st.markdown(
+                f"""<div style='border-left: 4px solid #FFA500;'>
+                    <h4>Stop Loss</h4>
+                    <p>${stop_loss:.2f}</p>
+                    <p style='font-size:0.8em;'>({((stop_loss - entry_price) / entry_price * 100):.2f}% from sell price)</p>
+                </div>""", 
+                unsafe_allow_html=True
+            )
 
-with tab3:
+with tab4:
+    # Portfolio Analysis section
+    st.markdown("<h3>Portfolio Analysis</h3>", unsafe_allow_html=True)
+    
+    from portfolio_analysis import get_portfolio_data
+    
+    # Add auto-refresh button
+    refresh_col1, refresh_col2 = st.columns([1, 3])
+    with refresh_col1:
+        if st.button("🔄 Refresh Portfolio"):
+            st.cache_data.clear()
+    
+    # Get portfolio data with caching
+    @st.cache_data(ttl=300)  # Cache for 5 minutes
+    def load_portfolio_data():
+        with st.spinner("Loading portfolio data..."):
+            return get_portfolio_data()
+    
+    allocation, metrics = load_portfolio_data()
+    
+    # Show last updated time
+    with refresh_col2:
+        st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>", unsafe_allow_html=True)
+    
+    # Display portfolio allocation
+    st.markdown("<h4>Portfolio Allocation</h4>", unsafe_allow_html=True)
+    
+    # Format allocation table
+    st.markdown("""
+    <style>
+    .allocation-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .allocation-table th, .allocation-table td {
+        padding: 8px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    .allocation-table th {
+        background-color: #3366CC;
+        color: white;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Highlight Bitcoin row
+    def highlight_btc(row):
+        return ['background-color: #E2F0FB' if row['Ticker'] == 'BTC-USD' else '' for _ in row]
+    
+    styled_allocation = allocation.style.apply(highlight_btc, axis=1)
+    st.table(styled_allocation)
+    
+    # Display performance metrics
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("<h4>Return</h4>", unsafe_allow_html=True)
+        
+        # Format annualized returns
+        annual_returns = metrics['Annualized Return'].map(lambda x: f"{x*100:.2f}%")
+        benchmark_rel = metrics['Benchmark Relative'].map(lambda x: f"{x*100:+.2f}%")
+        
+        returns_df = pd.DataFrame({
+            'Annualized Return': annual_returns,
+            'Benchmark Relative': benchmark_rel
+        })
+        
+        # Highlight Bitcoin row
+        def highlight_btc_index(df):
+            return ['background-color: #E2F0FB' if idx == 'BTC-USD' else '' for idx in df.index]
+        
+        styled_returns = returns_df.style.apply(highlight_btc_index, axis=0)
+        st.table(styled_returns)
+    
+    with col2:
+        st.markdown("<h4>Risk</h4>", unsafe_allow_html=True)
+        
+        # Format risk metrics
+        std_dev = metrics['Standard Deviation'].map(lambda x: f"{x*100:.2f}%")
+        max_dd = metrics['Maximum Drawdown'].map(lambda x: f"{x*100:.2f}%")
+        
+        risk_df = pd.DataFrame({
+            'Standard Deviation': std_dev,
+            'Maximum Drawdown': max_dd
+        })
+        
+        styled_risk = risk_df.style.apply(highlight_btc_index, axis=0)
+        st.table(styled_risk)
+        
+    # Add portfolio performance chart
+    st.markdown("<h4>Portfolio Performance vs Bitcoin</h4>", unsafe_allow_html=True)
+    
+    # Create a simple chart showing relative performance
+    performance_data = {
+        'Asset': ['Bitcoin'] + [ticker for ticker in allocation['Ticker'] if ticker != 'BTC-USD'],
+        'Return': [metrics.loc['BTC-USD', 'Annualized Return']] + 
+                 [metrics.loc[ticker, 'Annualized Return'] for ticker in allocation['Ticker'] if ticker != 'BTC-USD']
+    }
+    
+    performance_df = pd.DataFrame(performance_data)
+    
+    # Create bar chart
+    fig = go.Figure()
+    
+    # Add Bitcoin bar
+    fig.add_trace(go.Bar(
+        x=[performance_df['Asset'][0]],
+        y=[performance_df['Return'][0] * 100],
+        name='Bitcoin',
+        marker_color='#3366CC'
+    ))
+    
+    # Add other assets
+    fig.add_trace(go.Bar(
+        x=performance_df['Asset'][1:],
+        y=[r * 100 for r in performance_df['Return'][1:]],
+        name='Other Assets',
+        marker_color='#66CC33'
+    ))
+    
+    # Update layout
+    fig.update_layout(
+        title='',
+        xaxis_title='Asset',
+        yaxis_title='Annualized Return (%)',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=300
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+with tab5:
     # About section
     st.markdown("<h3>About This App</h3>", unsafe_allow_html=True)
     st.write("""
-    This Bitcoin Price Prediction App uses machine learning to forecast future Bitcoin prices based on historical data.
-    The app provides investment recommendations and price targets to help you make informed decisions.
+    This Bitcoin Price Prediction App uses advanced trading techniques to forecast future Bitcoin prices and provide trading signals.
     
     **Features:**
-    - Real-time Bitcoin price data from CoinGecko API
-    - Technical analysis with RSI, MACD, and Moving Averages
+    - Real-time Bitcoin price data from CoinMarketCap
+    - Price action analysis with pattern recognition
+    - Order flow analysis to identify buying/selling pressure
+    - Volume profile analysis for support/resistance levels
     - Machine learning predictions for future prices
-    - Investment recommendations based on predicted trends
-    - Price targets for buying, selling, and setting stop losses
+    - Backtested trading signals with performance metrics
+    - Investment calculator with risk/reward analysis
+    - Portfolio analysis with Bitcoin and traditional assets
+    """)
+    
+    st.markdown("<h4>Trading Techniques Used</h4>", unsafe_allow_html=True)
+    st.write("""
+    1. **Price Action Analysis**: Identifies chart patterns like double tops/bottoms and head & shoulders
+    2. **Volume Profile**: Analyzes trading volume at different price levels to identify support/resistance
+    3. **Order Flow Analysis**: Examines buying vs selling pressure and detects divergences
+    4. **Machine Learning**: Predicts future prices based on historical patterns
+    5. **Backtesting**: Tests trading strategies on historical data to measure performance
     """)
     
     st.markdown("<h4>How It Works</h4>", unsafe_allow_html=True)
     st.write("""
     1. The app fetches real-time Bitcoin price data
-    2. Technical indicators are calculated to identify market trends
-    3. A machine learning model is trained on historical price patterns
-    4. The model predicts future prices based on these patterns
-    5. Investment recommendations are generated based on both technical analysis and predicted price movements
+    2. Advanced analysis techniques identify patterns, support/resistance levels, and order flow signals
+    3. Trading signals are generated based on multiple analysis techniques
+    4. Signals are backtested to measure historical performance
+    5. Investment recommendations are provided with specific entry, target, and stop-loss prices
     """)
 
 # Risk disclaimer in sidebar with better styling

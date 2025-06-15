@@ -1,22 +1,10 @@
 import pandas as pd
 import numpy as np
 import datetime
-import time
-import threading
-from data_load import get_current_bitcoin_price, get_bitcoin_ohlcv_data
+import requests
 
-# Global variables to store data that will be updated periodically
-portfolio_data = {
-    'allocation': None,
-    'metrics': None,
-    'last_updated': None
-}
-
-# Lock for thread safety
-data_lock = threading.Lock()
-
-def get_real_time_portfolio_data():
-    """Get portfolio allocation and performance data using real-time Bitcoin data"""
+def get_portfolio_data():
+    """Get portfolio allocation and performance data"""
     # Define portfolio assets
     portfolio = {
         'VTI': 'Vanguard Total Stock Market ETF',
@@ -27,45 +15,32 @@ def get_real_time_portfolio_data():
     }
     
     try:
-        # Get Bitcoin data from our own data loader
-        btc_data = get_bitcoin_ohlcv_data(days=30)
+        # Get current Bitcoin price
+        btc_price = get_bitcoin_price()
         
-        # Calculate Bitcoin returns
-        btc_data['Returns'] = btc_data['Price'].pct_change()
-        
-        # Calculate metrics for Bitcoin
-        btc_annual_return = btc_data['Returns'].mean() * 252
-        btc_std_dev = btc_data['Returns'].std() * np.sqrt(252)
-        
-        # Calculate Bitcoin drawdown
-        btc_cum_returns = (1 + btc_data['Returns'].fillna(0)).cumprod()
-        btc_running_max = btc_cum_returns.cummax()
-        btc_drawdown = (btc_cum_returns / btc_running_max) - 1
-        btc_max_drawdown = btc_drawdown.min()
-        
-        # Create metrics for all assets (using simulated data for ETFs)
+        # Create metrics for all assets (using simulated data)
         metrics_df = pd.DataFrame(index=['VTI', 'VNQ', 'VXUS', 'BND', 'BTC-USD'])
         
-        # Simulated returns for ETFs (more realistic values)
+        # Simulated returns
         metrics_df.loc['VTI', 'Annualized Return'] = 0.09 + np.random.normal(0, 0.01)
         metrics_df.loc['VNQ', 'Annualized Return'] = 0.07 + np.random.normal(0, 0.01)
         metrics_df.loc['VXUS', 'Annualized Return'] = 0.06 + np.random.normal(0, 0.01)
         metrics_df.loc['BND', 'Annualized Return'] = 0.03 + np.random.normal(0, 0.005)
-        metrics_df.loc['BTC-USD', 'Annualized Return'] = btc_annual_return
+        metrics_df.loc['BTC-USD', 'Annualized Return'] = 0.25 + np.random.normal(0, 0.05)
         
-        # Simulated risk metrics for ETFs
+        # Simulated risk metrics
         metrics_df.loc['VTI', 'Standard Deviation'] = 0.15 + np.random.normal(0, 0.01)
         metrics_df.loc['VNQ', 'Standard Deviation'] = 0.18 + np.random.normal(0, 0.01)
         metrics_df.loc['VXUS', 'Standard Deviation'] = 0.16 + np.random.normal(0, 0.01)
         metrics_df.loc['BND', 'Standard Deviation'] = 0.04 + np.random.normal(0, 0.005)
-        metrics_df.loc['BTC-USD', 'Standard Deviation'] = btc_std_dev
+        metrics_df.loc['BTC-USD', 'Standard Deviation'] = 0.65 + np.random.normal(0, 0.05)
         
         # Simulated drawdowns
         metrics_df.loc['VTI', 'Maximum Drawdown'] = -0.20 + np.random.normal(0, 0.02)
         metrics_df.loc['VNQ', 'Maximum Drawdown'] = -0.25 + np.random.normal(0, 0.02)
         metrics_df.loc['VXUS', 'Maximum Drawdown'] = -0.22 + np.random.normal(0, 0.02)
         metrics_df.loc['BND', 'Maximum Drawdown'] = -0.08 + np.random.normal(0, 0.01)
-        metrics_df.loc['BTC-USD', 'Maximum Drawdown'] = btc_max_drawdown
+        metrics_df.loc['BTC-USD', 'Maximum Drawdown'] = -0.55 + np.random.normal(0, 0.05)
         
         # Benchmark relative (using S&P 500 as benchmark - simulated)
         benchmark_return = 0.08  # Simulated S&P 500 return
@@ -107,39 +82,21 @@ def get_real_time_portfolio_data():
         
         return allocation, metrics_df
 
-def update_portfolio_data_thread():
-    """Background thread to update portfolio data periodically"""
-    while True:
-        try:
-            # Get fresh data
-            allocation, metrics = get_real_time_portfolio_data()
-            
-            # Update global data with lock to ensure thread safety
-            with data_lock:
-                portfolio_data['allocation'] = allocation
-                portfolio_data['metrics'] = metrics
-                portfolio_data['last_updated'] = datetime.datetime.now()
-                
-            # Sleep for 5 minutes before updating again
-            time.sleep(300)
-        except Exception as e:
-            print(f"Error in update thread: {e}")
-            time.sleep(60)  # Shorter sleep on error
-
-def get_portfolio_data():
-    """Get the latest portfolio data (used by the app)"""
-    with data_lock:
-        if portfolio_data['allocation'] is None or portfolio_data['metrics'] is None:
-            # Initial load
-            allocation, metrics = get_real_time_portfolio_data()
-            portfolio_data['allocation'] = allocation
-            portfolio_data['metrics'] = metrics
-            portfolio_data['last_updated'] = datetime.datetime.now()
-            
-            # Start background update thread if not already running
-            if not hasattr(get_portfolio_data, 'thread_started'):
-                update_thread = threading.Thread(target=update_portfolio_data_thread, daemon=True)
-                update_thread.start()
-                get_portfolio_data.thread_started = True
+def get_bitcoin_price():
+    """Get current Bitcoin price from CoinGecko API"""
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            "ids": "bitcoin",
+            "vs_currencies": "usd"
+        }
         
-        return portfolio_data['allocation'], portfolio_data['metrics']
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        
+        data = response.json()
+        return data.get("bitcoin", {}).get("usd", 50000)  # Default to 50000 if not found
+    
+    except Exception as e:
+        print(f"Error fetching Bitcoin price: {e}")
+        return 50000  # Default fallback price

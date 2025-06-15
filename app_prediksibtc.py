@@ -897,7 +897,7 @@ with tab4:
     
     # Highlight Bitcoin row
     def highlight_btc(row):
-        return ['background-color: #FFFFFF' if row['Ticker'] == 'BTC-USD' else '' for _ in row]
+        return [if row['Ticker'] == 'BTC-USD' else '' for _ in row]
     
     styled_allocation = allocation.style.apply(highlight_btc, axis=1)
     st.table(styled_allocation)
@@ -919,7 +919,7 @@ with tab4:
         
         # Highlight Bitcoin row
         def highlight_btc_index(df):
-            return ['background-color: #FFFFFF' if idx == 'BTC-USD' else '' for idx in df.index]
+            return [if idx == 'BTC-USD' else '' for idx in df.index]
         
         styled_returns = returns_df.style.apply(highlight_btc_index, axis=0)
         st.table(styled_returns)

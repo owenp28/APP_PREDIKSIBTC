@@ -129,6 +129,120 @@ with tab1:
     # Historical and predicted prices
     st.markdown("<h3>Bitcoin Price Analysis</h3>", unsafe_allow_html=True)
     
+    # Add Technical Analysis section
+    from technical_analysis import get_technical_indicators, get_investment_recommendation
+    
+    # Get technical indicators
+    tech_indicators = get_technical_indicators(data)
+    
+    # Prepare prediction_data for investment recommendation (move this up so it's defined)
+    days_ahead = 30  # or any default value you want for the technical analysis section
+    prediction_data = make_predictions(model, scaler, features, days_ahead)
+    # Ensure 'Date' column is datetime for plotting
+    if 'Date' in prediction_data.columns and not np.issubdtype(prediction_data['Date'].dtype, np.datetime64):
+        prediction_data['Date'] = pd.to_datetime(prediction_data['Date'])
+    # Add some volatility to make the predictions more realistic
+    np.random.seed(42)  # For reproducibility
+    volatility_factor = 0.01  # 1% daily volatility
+    for i in range(1, len(prediction_data)):
+        random_change = np.random.normal(0.001, volatility_factor)
+        prediction_data.loc[i, 'Predicted_Price'] = prediction_data.loc[i-1, 'Predicted_Price'] * (1 + random_change)
+    
+    # Create Technical Analysis section
+    st.markdown("<h4>Technical Analysis</h4>", unsafe_allow_html=True)
+    
+    # Create three columns for technical indicators
+    ta_col1, ta_col2, ta_col3 = st.columns(3)
+    
+    with ta_col1:
+        st.markdown("<p style='font-weight:bold'>Key Indicators</p>", unsafe_allow_html=True)
+        
+        # RSI
+        rsi_color = "#66CC33" if tech_indicators['RSI'] < 30 else "#CC3366" if tech_indicators['RSI'] > 70 else "#3366CC"
+        st.markdown(f"""
+        <div style='border-left: 4px solid {rsi_color}; padding-left: 10px;'>
+            <p style='margin:0; font-weight:bold'>RSI (Relative Strength Index)</p>
+            <p style='margin:0; font-size:1.5em;'>{tech_indicators['RSI']:.2f}</p>
+            <p style='margin:0; color:{rsi_color}'>{tech_indicators['RSI_Signal']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # MACD Histogram
+        macd_color = "#66CC33" if tech_indicators['MACD_Hist'] > 0 else "#CC3366"
+        st.markdown(f"""
+        <div style='border-left: 4px solid {macd_color}; padding-left: 10px;'>
+            <p style='margin:0; font-weight:bold'>MACD Histogram</p>
+            <p style='margin:0; font-size:1.5em;'>{tech_indicators['MACD_Hist']:.2f}</p>
+            <p style='margin:0; color:{macd_color}'>{tech_indicators['MACD_Signal']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with ta_col2:
+        st.markdown("<p style='font-weight:bold'>Moving Averages</p>", unsafe_allow_html=True)
+        
+        # MA Crossover
+        ma_color = "#66CC33" if tech_indicators['MA_Crossover'] == 'Bullish' else "#CC3366"
+        st.markdown(f"""
+        <div style='border-left: 4px solid {ma_color}; padding-left: 10px;'>
+            <p style='margin:0; font-weight:bold'>MA Crossover</p>
+            <p style='margin:0; font-size:1.5em; color:{ma_color}'>{tech_indicators['MA_Crossover']}</p>
+            <p style='margin:0;'>MA5: ${tech_indicators['MA5']:.2f} | MA20: ${tech_indicators['MA20']:.2f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Overall Signal
+        signal_color = "#66CC33" if "Buy" in tech_indicators['Overall_Signal'] else "#FFA500" if tech_indicators['Overall_Signal'] == "Hold" else "#CC3366"
+        st.markdown(f"""
+        <div style='border-left: 4px solid {signal_color}; padding-left: 10px;'>
+            <p style='margin:0; font-weight:bold'>Overall Signal</p>
+            <p style='margin:0; font-size:1.5em; color:{signal_color}'>{tech_indicators['Overall_Signal']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with ta_col3:
+        st.markdown("<p style='font-weight:bold'>Model Performance</p>", unsafe_allow_html=True)
+        
+        # MSE
+        st.markdown(f"""
+        <div style='border-left: 4px solid #3366CC; padding-left: 10px;'>
+            <p style='margin:0; font-weight:bold'>Mean Squared Error</p>
+            <p style='margin:0; font-size:1.5em;'>{mse:.4f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Investment Recommendation
+        recommendations = get_investment_recommendation(prediction_data)
+        
+        st.markdown("<p style='font-weight:bold'>Investment Recommendation</p>", unsafe_allow_html=True)
+        
+        # Short-term outlook
+        short_term = recommendations['short_term']
+        short_color = "#66CC33" if "Buy" in short_term['outlook'] else "#FFA500" if short_term['outlook'] == "Hold" else "#CC3366"
+        st.markdown(f"""
+        <div style='margin-bottom:10px;'>
+            <p style='margin:0; font-weight:bold'>Short-term Outlook (7 days)</p>
+            <p style='margin:0; color:{short_color}'>{short_term['outlook']}: Expected change of {short_term['change']:.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Long-term outlook
+        long_term = recommendations['long_term']
+        long_color = "#66CC33" if "Buy" in long_term['outlook'] else "#FFA500" if long_term['outlook'] == "Hold" else "#CC3366"
+        st.markdown(f"""
+        <div>
+            <p style='margin:0; font-weight:bold'>Long-term Outlook (30 days)</p>
+            <p style='margin:0; color:{long_color}'>{long_term['outlook']}: Expected change of {long_term['change']:.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<hr>", unsafe_allow_html=True)
+    
     col1, col2 = st.columns(2)
     
     with col1:

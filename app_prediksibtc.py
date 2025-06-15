@@ -769,18 +769,31 @@ with tab2:
     
     col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
+    try:
         perf = advanced_signals['backtest_performance']
-        st.metric("Total Return", f"{perf['total_return']*100:.2f}%")
-    
-    with col2:
-        st.metric("Max Drawdown", f"{perf['max_drawdown']*100:.2f}%")
-    
-    with col3:
-        st.metric("Win Rate", f"{perf['win_rate']*100:.2f}%")
-    
-    with col4:
-        st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
+        with col1:
+            st.metric("Total Return", f"{perf['total_return']*100:.2f}%")
+        
+        with col2:
+            st.metric("Max Drawdown", f"{perf['max_drawdown']*100:.2f}%")
+        
+        with col3:
+            st.metric("Win Rate", f"{perf['win_rate']*100:.2f}%")
+        
+        with col4:
+            st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
+    except:
+        with col1:
+            st.metric("Total Return", "N/A")
+        
+        with col2:
+            st.metric("Max Drawdown", "N/A")
+        
+        with col3:
+            st.metric("Win Rate", "N/A")
+        
+        with col4:
+            st.metric("Sharpe Ratio", "N/A")
 
 with tab3:
     # Investment calculator with better styling

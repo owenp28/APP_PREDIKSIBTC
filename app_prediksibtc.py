@@ -8,7 +8,6 @@ from data_load import load_data, get_trading_recommendation, get_current_bitcoin
 from train_model import preprocess_data, train_model
 from prediction_btc import make_predictions
 from trading_signals import get_combined_trading_signals
-from backtest import get_strategy_performance
 
 # Set page configuration and custom theme
 st.set_page_config(
@@ -121,6 +120,8 @@ def get_realtime_signals():
     fresh_data = load_data()
     # Get trading recommendations based on technical analysis
     trading_rec = get_trading_recommendation(fresh_data)
+    # Import here to avoid circular imports
+    from trading_signals import get_combined_trading_signals
     # Get advanced trading signals
     advanced_signals = get_combined_trading_signals(fresh_data)
     return trading_rec, advanced_signals, fresh_data
@@ -730,8 +731,11 @@ with tab2:
     
     # Show last updated time for signals
     with signal_col2:
-        last_updated = advanced_signals.get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {last_updated}</div>", unsafe_allow_html=True)
+        try:
+            last_updated = advanced_signals.get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {last_updated}</div>", unsafe_allow_html=True)
+        except:
+            st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>", unsafe_allow_html=True)
     
     # Determine signal color
     signal_color = "#66CC33" if advanced_signals['action'] in ["Buy", "Strong Buy"] else "#FFA500" if advanced_signals['action'] == "Hold" else "#CC3366"
@@ -757,15 +761,20 @@ with tab2:
         if st.button("🔄 Refresh Backtest"):
             # Clear cache to force refresh
             st.cache_data.clear()
-            # Get fresh backtest results
+            # Get fresh data
+            fresh_data = load_data()
+            # Import here to avoid circular imports
             from backtest import get_strategy_performance
-            advanced_signals['backtest_performance'] = get_strategy_performance()
+            advanced_signals['backtest_performance'] = get_strategy_performance(fresh_data)
             st.success("Backtest updated with latest data!")
     
     # Show last updated time for backtest
     with backtest_col2:
-        last_updated = advanced_signals['backtest_performance'].get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {last_updated}</div>", unsafe_allow_html=True)
+        try:
+            last_updated = advanced_signals['backtest_performance'].get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {last_updated}</div>", unsafe_allow_html=True)
+        except:
+            st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1134,9 +1143,14 @@ st.sidebar.markdown(
 )
 
 # Add data status indicator
-data_age = (datetime.datetime.now() - datetime.datetime.strptime(advanced_signals.get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')), '%Y-%m-%d %H:%M:%S')).total_seconds() / 60
-data_status_color = "#66CC33" if data_age < 5 else "#FFA500" if data_age < 15 else "#CC3366"
-data_status_text = "Real-time" if data_age < 5 else "Recent" if data_age < 15 else "Needs refresh"
+try:
+    last_updated = advanced_signals.get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    data_age = (datetime.datetime.now() - datetime.datetime.strptime(last_updated, '%Y-%m-%d %H:%M:%S')).total_seconds() / 60
+    data_status_color = "#66CC33" if data_age < 5 else "#FFA500" if data_age < 15 else "#CC3366"
+    data_status_text = "Real-time" if data_age < 5 else "Recent" if data_age < 15 else "Needs refresh"
+except:
+    data_status_color = "#FFA500"
+    data_status_text = "Status unknown"
 
 st.sidebar.markdown(
     f"""<div style='background-color:#F8F9FA; padding:10px; border-radius:5px; margin-top:10px; border-left:4px solid {data_status_color};'>

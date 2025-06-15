@@ -3,10 +3,12 @@ import numpy as np
 import pandas as pd
 import datetime
 import plotly.graph_objects as go
+import time
 from data_load import load_data, get_trading_recommendation, get_current_bitcoin_price
 from train_model import preprocess_data, train_model
 from prediction_btc import make_predictions
 from trading_signals import get_combined_trading_signals
+from backtest import get_strategy_performance
 
 # Set page configuration and custom theme
 st.set_page_config(
@@ -14,6 +16,34 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Add auto-refresh functionality
+def auto_refresh():
+    # This function will be called by the auto-refresh mechanism
+    st.cache_data.clear()
+    st.experimental_rerun()
+
+# Add auto-refresh option in sidebar
+with st.sidebar:
+    st.markdown("### Auto-Refresh Settings")
+    enable_auto_refresh = st.checkbox("Enable Auto-Refresh", value=False)
+    if enable_auto_refresh:
+        refresh_interval = st.slider("Refresh interval (minutes)", 1, 30, 5)
+        st.info(f"App will auto-refresh every {refresh_interval} minutes")
+        # Calculate time until next refresh
+        if "last_refresh" not in st.session_state:
+            st.session_state.last_refresh = time.time()
+        
+        time_since_refresh = time.time() - st.session_state.last_refresh
+        time_until_refresh = max(0, refresh_interval * 60 - time_since_refresh)
+        
+        # Display countdown
+        st.markdown(f"Next refresh in: {int(time_until_refresh // 60)}m {int(time_until_refresh % 60)}s")
+        
+        # Check if it's time to refresh
+        if time_since_refresh >= refresh_interval * 60:
+            st.session_state.last_refresh = time.time()
+            auto_refresh()
 
 # Custom CSS for better typography and color scheme
 # Using a triadic color scheme: #3366CC (primary blue), #CC3366 (accent pink), #66CC33 (accent green)
@@ -84,10 +114,26 @@ with st.spinner("Loading Bitcoin data..."):
 current_price = get_current_bitcoin_price()
 last_price = data["Price"].iloc[-1]
 
-# Add auto-refresh for current price
-if st.sidebar.button("🔄 Refresh Price"):
+# Create a function to get real-time trading signals with caching
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_realtime_signals():
+    # Get fresh data with current price
+    fresh_data = load_data()
+    # Get trading recommendations based on technical analysis
+    trading_rec = get_trading_recommendation(fresh_data)
+    # Get advanced trading signals
+    advanced_signals = get_combined_trading_signals(fresh_data)
+    return trading_rec, advanced_signals, fresh_data
+
+# Add auto-refresh for current price and data
+if st.sidebar.button("🔄 Refresh All Data"):
+    # Clear all cached data
+    st.cache_data.clear()
+    # Get fresh price
     current_price = get_current_bitcoin_price()
-    st.sidebar.success("Price updated!")
+    # Get fresh signals
+    trading_rec, advanced_signals, data = get_realtime_signals()
+    st.sidebar.success("All data updated!")
 
 # Display current price with timestamp
 st.sidebar.markdown("<h3>Current Bitcoin Price</h3>", unsafe_allow_html=True)
@@ -108,11 +154,19 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# Get trading recommendations based on technical analysis
-trading_rec = get_trading_recommendation(data)
+# Create a function to get real-time trading signals with caching
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_realtime_signals():
+    # Get fresh data with current price
+    fresh_data = load_data()
+    # Get trading recommendations based on technical analysis
+    trading_rec = get_trading_recommendation(fresh_data)
+    # Get advanced trading signals
+    advanced_signals = get_combined_trading_signals(fresh_data)
+    return trading_rec, advanced_signals, fresh_data
 
-# Get advanced trading signals
-advanced_signals = get_combined_trading_signals(data)
+# Get trading recommendations and signals
+trading_rec, advanced_signals, data = get_realtime_signals()
 
 # Update data with current price for better predictions
 data.loc[data.index[-1], "Price"] = current_price
@@ -664,6 +718,21 @@ with tab2:
     # Trading Signal and Recommendation
     st.markdown("<h4>Trading Signal</h4>", unsafe_allow_html=True)
     
+    # Add refresh button for trading signals
+    signal_col1, signal_col2 = st.columns([1, 3])
+    with signal_col1:
+        if st.button("🔄 Refresh Signals"):
+            # Clear cache to force refresh
+            st.cache_data.clear()
+            # Get fresh signals
+            trading_rec, advanced_signals, data = get_realtime_signals()
+            st.success("Trading signals updated!")
+    
+    # Show last updated time for signals
+    with signal_col2:
+        last_updated = advanced_signals.get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {last_updated}</div>", unsafe_allow_html=True)
+    
     # Determine signal color
     signal_color = "#66CC33" if advanced_signals['action'] in ["Buy", "Strong Buy"] else "#FFA500" if advanced_signals['action'] == "Hold" else "#CC3366"
     
@@ -681,6 +750,22 @@ with tab2:
     
     # Backtest Results
     st.markdown("<h4>Backtest Results</h4>", unsafe_allow_html=True)
+    
+    # Add refresh button for backtest
+    backtest_col1, backtest_col2 = st.columns([1, 3])
+    with backtest_col1:
+        if st.button("🔄 Refresh Backtest"):
+            # Clear cache to force refresh
+            st.cache_data.clear()
+            # Get fresh backtest results
+            from backtest import get_strategy_performance
+            advanced_signals['backtest_performance'] = get_strategy_performance()
+            st.success("Backtest updated with latest data!")
+    
+    # Show last updated time for backtest
+    with backtest_col2:
+        last_updated = advanced_signals['backtest_performance'].get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        st.markdown(f"<div style='color:#666; font-size:0.8em;'>Last updated: {last_updated}</div>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -897,7 +982,7 @@ with tab4:
     
     # Highlight Bitcoin row
     def highlight_btc(row):
-        return ['background-color:FFFF00'if row['Ticker'] == 'BTC-USD' else '' for _ in row]
+        return ['background-color: #E2F0FB' if row['Ticker'] == 'BTC-USD' else '' for _ in row]
     
     styled_allocation = allocation.style.apply(highlight_btc, axis=1)
     st.table(styled_allocation)
@@ -919,7 +1004,7 @@ with tab4:
         
         # Highlight Bitcoin row
         def highlight_btc_index(df):
-            return ['background-color:FFFF00'if idx == 'BTC-USD' else '' for idx in df.index]
+            return ['background-color: #E2F0FB' if idx == 'BTC-USD' else '' for idx in df.index]
         
         styled_returns = returns_df.style.apply(highlight_btc_index, axis=0)
         st.table(styled_returns)
@@ -1031,6 +1116,18 @@ st.sidebar.markdown(
 st.sidebar.markdown(
     f"""<div style='background-color:#E2F0FB; padding:10px; border-radius:5px; margin-top:10px; border-left:4px solid #3366CC;'>
     <p style='color:#3366CC; margin:0; font-size:0.9em;'>Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    </div>""", 
+    unsafe_allow_html=True
+)
+
+# Add data status indicator
+data_age = (datetime.datetime.now() - datetime.datetime.strptime(advanced_signals.get('last_updated', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')), '%Y-%m-%d %H:%M:%S')).total_seconds() / 60
+data_status_color = "#66CC33" if data_age < 5 else "#FFA500" if data_age < 15 else "#CC3366"
+data_status_text = "Real-time" if data_age < 5 else "Recent" if data_age < 15 else "Needs refresh"
+
+st.sidebar.markdown(
+    f"""<div style='background-color:#F8F9FA; padding:10px; border-radius:5px; margin-top:10px; border-left:4px solid {data_status_color};'>
+    <p style='margin:0; font-size:0.9em;'>Data status: <span style='color:{data_status_color};'>{data_status_text}</span></p>
     </div>""", 
     unsafe_allow_html=True
 )

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import datetime
+from data_load import get_bitcoin_ohlcv_data
 
 def backtest_strategy(df, strategy_signals, initial_capital=10000):
     """Backtest a trading strategy based on provided signals"""
@@ -55,7 +56,8 @@ def backtest_strategy(df, strategy_signals, initial_capital=10000):
         'total_return': total_return,
         'max_drawdown': max_drawdown,
         'win_rate': win_rate,
-        'sharpe_ratio': data['Returns'].mean() / data['Returns'].std() * np.sqrt(252) if data['Returns'].std() != 0 else 0
+        'sharpe_ratio': data['Returns'].mean() / data['Returns'].std() * np.sqrt(252) if data['Returns'].std() != 0 else 0,
+        'last_updated': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     
     return data, performance
@@ -87,6 +89,22 @@ def generate_combined_signals(df):
         combined_signals[-1] = 2 * price_signals['signal']  # Strengthen the signal
     
     return combined_signals
+
+def get_strategy_performance(df=None):
+    """Get performance metrics for the trading strategy with real-time data"""
+    # If no dataframe is provided, fetch fresh data
+    if df is None:
+        from data_load import get_bitcoin_ohlcv_data, add_technical_indicators
+        df = get_bitcoin_ohlcv_data(days=30)
+        df = add_technical_indicators(df)
+    
+    # Generate signals
+    signals = generate_combined_signals(df)
+    
+    # Backtest the strategy
+    _, performance = backtest_strategy(df, signals)
+    
+    return performance
 
 def get_strategy_performance(df):
     """Get performance metrics for the trading strategy"""

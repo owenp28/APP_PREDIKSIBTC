@@ -2,6 +2,61 @@ import pandas as pd
 import requests
 import datetime
 import numpy as np
+import time
+
+def get_current_bitcoin_price():
+    """Get the current Bitcoin price from CoinMarketCap"""
+    try:
+        # Use CoinMarketCap API (public endpoint)
+        url = "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/chart"
+        params = {
+            "id": "1",  # Bitcoin ID
+            "range": "1D"  # Last 24 hours
+        }
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Get the latest price point
+        points = data.get("data", {}).get("points", {})
+        if points:
+            # Get the latest timestamp (should be the largest one)
+            latest_timestamp = max(points.keys())
+            latest_price = points[latest_timestamp]["v"][0]
+            return latest_price
+        
+        # If we couldn't get the price from CoinMarketCap, try CoinGecko as backup
+        return get_bitcoin_price_from_coingecko()
+        
+    except Exception as e:
+        print(f"Error fetching current Bitcoin price from CoinMarketCap: {e}")
+        # Try CoinGecko as backup
+        return get_bitcoin_price_from_coingecko()
+
+def get_bitcoin_price_from_coingecko():
+    """Get the current Bitcoin price from CoinGecko as a backup"""
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            "ids": "bitcoin",
+            "vs_currencies": "usd"
+        }
+        
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        
+        data = response.json()
+        return data.get("bitcoin", {}).get("usd", 50000)  # Default to 50000 if not found
+    
+    except Exception as e:
+        print(f"Error fetching current Bitcoin price from CoinGecko: {e}")
+        return 50000  # Default fallback price
 
 def load_data():
     # Use CoinGecko API to get real Bitcoin data (free, no API key required)
@@ -37,6 +92,10 @@ def load_data():
             df["Date"] = pd.to_datetime(df["timestamp"], unit="ms")
             df = df[["Date", "Price", "Volume"]]  # Keep only needed columns
             
+            # Update the latest price with real-time data from CoinMarketCap
+            current_price = get_current_bitcoin_price()
+            df.loc[df.index[-1], "Price"] = current_price
+            
             # Add technical indicators
             df = add_technical_indicators(df)
             
@@ -53,7 +112,7 @@ def load_data():
         
         # Generate random but somewhat realistic prices
         np.random.seed(42)  # For reproducibility
-        base_price = 50000  # Base Bitcoin price
+        base_price = get_current_bitcoin_price()  # Try to get current price
         volatility = 0.03   # Daily volatility
         
         prices = [base_price]
@@ -61,6 +120,9 @@ def load_data():
             # Random walk with drift
             change = np.random.normal(0.001, volatility) # Slight upward drift
             prices.append(prices[-1] * (1 + change))
+        
+        # Reverse the list so most recent price is last
+        prices.reverse()
         
         # Generate volumes
         volumes = np.random.normal(1000000000, 200000000, 30)

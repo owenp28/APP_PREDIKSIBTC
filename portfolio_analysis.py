@@ -1,10 +1,8 @@
 import pandas as pd
 import numpy as np
-import yfinance as yf
 import datetime
 import time
 import threading
-import requests
 from data_load import get_current_bitcoin_price, get_bitcoin_ohlcv_data
 
 # Global variables to store data that will be updated periodically
@@ -28,72 +26,53 @@ def get_real_time_portfolio_data():
         'BTC-USD': 'Bitcoin'
     }
     
-    # Get historical data
-    end_date = datetime.datetime.now()
-    start_date = end_date - datetime.timedelta(days=365)
-    
     try:
         # Get Bitcoin data from our own data loader
-        btc_data = get_bitcoin_ohlcv_data(days=365)
-        btc_data.set_index('Date', inplace=True)
+        btc_data = get_bitcoin_ohlcv_data(days=30)
         
-        # Download ETF data
-        etf_tickers = [ticker for ticker in portfolio.keys() if ticker != 'BTC-USD']
-        etf_data = yf.download(etf_tickers, start=start_date, end=end_date)['Adj Close']
+        # Calculate Bitcoin returns
+        btc_data['Returns'] = btc_data['Price'].pct_change()
         
-        # Combine Bitcoin and ETF data
-        data = pd.DataFrame(index=etf_data.index)
-        for ticker in etf_tickers:
-            data[ticker] = etf_data[ticker]
+        # Calculate metrics for Bitcoin
+        btc_annual_return = btc_data['Returns'].mean() * 252
+        btc_std_dev = btc_data['Returns'].std() * np.sqrt(252)
         
-        # Resample Bitcoin data to match ETF data frequency (daily)
-        btc_daily = btc_data['Close'].resample('D').last()
+        # Calculate Bitcoin drawdown
+        btc_cum_returns = (1 + btc_data['Returns'].fillna(0)).cumprod()
+        btc_running_max = btc_cum_returns.cummax()
+        btc_drawdown = (btc_cum_returns / btc_running_max) - 1
+        btc_max_drawdown = btc_drawdown.min()
         
-        # Align Bitcoin data with ETF data
-        common_dates = data.index.intersection(btc_daily.index)
-        data = data.loc[common_dates]
-        data['BTC-USD'] = btc_daily.loc[common_dates]
+        # Create metrics for all assets (using simulated data for ETFs)
+        metrics_df = pd.DataFrame(index=['VTI', 'VNQ', 'VXUS', 'BND', 'BTC-USD'])
         
-        # Fill any missing values with forward fill
-        data = data.fillna(method='ffill')
+        # Simulated returns for ETFs (more realistic values)
+        metrics_df.loc['VTI', 'Annualized Return'] = 0.09 + np.random.normal(0, 0.01)
+        metrics_df.loc['VNQ', 'Annualized Return'] = 0.07 + np.random.normal(0, 0.01)
+        metrics_df.loc['VXUS', 'Annualized Return'] = 0.06 + np.random.normal(0, 0.01)
+        metrics_df.loc['BND', 'Annualized Return'] = 0.03 + np.random.normal(0, 0.005)
+        metrics_df.loc['BTC-USD', 'Annualized Return'] = btc_annual_return
         
-        # Calculate returns
-        returns = data.pct_change().dropna()
+        # Simulated risk metrics for ETFs
+        metrics_df.loc['VTI', 'Standard Deviation'] = 0.15 + np.random.normal(0, 0.01)
+        metrics_df.loc['VNQ', 'Standard Deviation'] = 0.18 + np.random.normal(0, 0.01)
+        metrics_df.loc['VXUS', 'Standard Deviation'] = 0.16 + np.random.normal(0, 0.01)
+        metrics_df.loc['BND', 'Standard Deviation'] = 0.04 + np.random.normal(0, 0.005)
+        metrics_df.loc['BTC-USD', 'Standard Deviation'] = btc_std_dev
         
-        # Calculate metrics for each asset
-        annualized_returns = (1 + returns.mean()) * 252 - 1
-        std_devs = returns.std() * np.sqrt(252)
+        # Simulated drawdowns
+        metrics_df.loc['VTI', 'Maximum Drawdown'] = -0.20 + np.random.normal(0, 0.02)
+        metrics_df.loc['VNQ', 'Maximum Drawdown'] = -0.25 + np.random.normal(0, 0.02)
+        metrics_df.loc['VXUS', 'Maximum Drawdown'] = -0.22 + np.random.normal(0, 0.02)
+        metrics_df.loc['BND', 'Maximum Drawdown'] = -0.08 + np.random.normal(0, 0.01)
+        metrics_df.loc['BTC-USD', 'Maximum Drawdown'] = btc_max_drawdown
         
-        # Calculate drawdowns for each asset
-        max_drawdowns = {}
-        for col in returns.columns:
-            asset_returns = returns[col]
-            cum_returns = (1 + asset_returns).cumprod()
-            running_max = cum_returns.cummax()
-            drawdown = (cum_returns / running_max) - 1
-            max_drawdowns[col] = drawdown.min()
-        
-        # Create metrics DataFrame
-        metrics_df = pd.DataFrame({
-            'Annualized Return': annualized_returns,
-            'Standard Deviation': std_devs,
-            'Maximum Drawdown': pd.Series(max_drawdowns)
-        })
-        
-        # Calculate benchmark relative (using S&P 500 as benchmark)
-        benchmark = yf.download('^GSPC', start=start_date, end=end_date)['Adj Close']
-        benchmark_return = benchmark.pct_change().dropna()
-        benchmark_annual_return = (1 + benchmark_return.mean()) * 252 - 1
+        # Benchmark relative (using S&P 500 as benchmark - simulated)
+        benchmark_return = 0.08  # Simulated S&P 500 return
         
         # Add benchmark relative to metrics
-        metrics_df['Benchmark Relative'] = metrics_df['Annualized Return'] - benchmark_annual_return
-        
-        # Update Bitcoin metrics with the latest price
-        current_btc_price = get_current_bitcoin_price()
-        latest_btc_return = (current_btc_price / data['BTC-USD'].iloc[-1]) - 1
-        
-        # Adjust Bitcoin metrics to reflect latest price movement
-        metrics_df.loc['BTC-USD', 'Annualized Return'] += latest_btc_return / 365 * 252
+        for ticker in metrics_df.index:
+            metrics_df.loc[ticker, 'Benchmark Relative'] = metrics_df.loc[ticker, 'Annualized Return'] - benchmark_return
         
         # Portfolio allocation (dynamic based on performance)
         # Better performers get slightly higher allocation

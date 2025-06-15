@@ -129,8 +129,134 @@ with tab1:
     # Historical and predicted prices
     st.markdown("<h3>Bitcoin Price Analysis</h3>", unsafe_allow_html=True)
     
-    # Add Technical Analysis section
-    from technical_analysis import get_technical_indicators, get_investment_recommendation
+    # Define technical analysis functions inline
+    def get_technical_indicators(data):
+        """Calculate technical indicators for Bitcoin price data"""
+        # Make a copy to avoid modifying the original
+        df = data.copy()
+        
+        # Calculate RSI (Relative Strength Index)
+        delta = df['Price'].diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        
+        avg_gain = gain.rolling(window=14).mean()
+        avg_loss = loss.rolling(window=14).mean()
+        
+        rs = avg_gain / avg_loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # Calculate MACD (Moving Average Convergence Divergence)
+        df['EMA12'] = df['Price'].ewm(span=12, adjust=False).mean()
+        df['EMA26'] = df['Price'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = df['EMA12'] - df['EMA26']
+        df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        df['MACD_Hist'] = df['MACD'] - df['Signal']
+        
+        # Calculate Moving Averages
+        df['MA5'] = df['Price'].rolling(window=5).mean()
+        df['MA10'] = df['Price'].rolling(window=10).mean()
+        df['MA20'] = df['Price'].rolling(window=20).mean()
+        
+        # Calculate MA Crossover signals
+        df['MA_Crossover'] = np.where(df['MA5'] > df['MA20'], 'Bullish', 'Bearish')
+        
+        # Get the latest values
+        latest = {}
+        latest['RSI'] = df['RSI'].iloc[-1]
+        latest['MACD_Hist'] = df['MACD_Hist'].iloc[-1]
+        latest['MA5'] = df['MA5'].iloc[-1]
+        latest['MA20'] = df['MA20'].iloc[-1]
+        latest['MA_Crossover'] = df['MA_Crossover'].iloc[-1]
+        
+        # Determine RSI signal
+        if latest['RSI'] > 70:
+            latest['RSI_Signal'] = 'Overbought'
+        elif latest['RSI'] < 30:
+            latest['RSI_Signal'] = 'Oversold'
+        else:
+            latest['RSI_Signal'] = 'Neutral'
+        
+        # Determine MACD signal
+        if latest['MACD_Hist'] > 0:
+            latest['MACD_Signal'] = 'Bullish (>0)'
+        else:
+            latest['MACD_Signal'] = 'Bearish (<0)'
+        
+        # Determine overall signal
+        signals = []
+        if latest['RSI'] < 30:
+            signals.append(1)  # Oversold - bullish
+        elif latest['RSI'] > 70:
+            signals.append(-1)  # Overbought - bearish
+        else:
+            signals.append(0)
+            
+        if latest['MACD_Hist'] > 0:
+            signals.append(1)  # Bullish
+        else:
+            signals.append(-1)  # Bearish
+            
+        if latest['MA_Crossover'] == 'Bullish':
+            signals.append(1)
+        else:
+            signals.append(-1)
+        
+        avg_signal = sum(signals) / len(signals)
+        
+        if avg_signal > 0.5:
+            latest['Overall_Signal'] = 'Strong Buy'
+        elif avg_signal > 0:
+            latest['Overall_Signal'] = 'Consider Buy'
+        elif avg_signal > -0.5:
+            latest['Overall_Signal'] = 'Hold'
+        else:
+            latest['Overall_Signal'] = 'Consider Sell'
+        
+        return latest
+
+    def get_investment_recommendation(prediction_data):
+        """Generate investment recommendations based on predictions"""
+        # Calculate short-term (7 days) and long-term (30 days) price changes
+        current_price = prediction_data['Predicted_Price'].iloc[0]
+        
+        # Short-term outlook (7 days)
+        if len(prediction_data) >= 7:
+            price_7d = prediction_data['Predicted_Price'].iloc[6]
+            change_7d = (price_7d - current_price) / current_price * 100
+            
+            if change_7d > 5:
+                short_term = {'outlook': 'Strong Buy', 'change': change_7d}
+            elif change_7d > 2:
+                short_term = {'outlook': 'Buy', 'change': change_7d}
+            elif change_7d > -2:
+                short_term = {'outlook': 'Hold', 'change': change_7d}
+            elif change_7d > -5:
+                short_term = {'outlook': 'Sell', 'change': change_7d}
+            else:
+                short_term = {'outlook': 'Strong Sell', 'change': change_7d}
+        else:
+            short_term = {'outlook': 'Insufficient Data', 'change': 0}
+        
+        # Long-term outlook (30 days)
+        if len(prediction_data) >= 30:
+            price_30d = prediction_data['Predicted_Price'].iloc[29]
+            change_30d = (price_30d - current_price) / current_price * 100
+            
+            if change_30d > 10:
+                long_term = {'outlook': 'Strong Buy', 'change': change_30d}
+            elif change_30d > 5:
+                long_term = {'outlook': 'Buy', 'change': change_30d}
+            elif change_30d > -5:
+                long_term = {'outlook': 'Hold', 'change': change_30d}
+            elif change_30d > -10:
+                long_term = {'outlook': 'Sell', 'change': change_30d}
+            else:
+                long_term = {'outlook': 'Strong Sell', 'change': change_30d}
+        else:
+            long_term = {'outlook': 'Insufficient Data', 'change': 0}
+        
+        return {'short_term': short_term, 'long_term': long_term}
     
     # Get technical indicators
     tech_indicators = get_technical_indicators(data)

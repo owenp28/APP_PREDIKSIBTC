@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import datetime
-from data_load import get_bitcoin_ohlcv_data
 
 def backtest_strategy(df, strategy_signals, initial_capital=10000):
     """Backtest a trading strategy based on provided signals"""
@@ -92,11 +91,11 @@ def generate_combined_signals(df):
 
 def get_strategy_performance(df=None):
     """Get performance metrics for the trading strategy with real-time data"""
-    # If no dataframe is provided, fetch fresh data
+    # If no dataframe is provided, use the one passed in
     if df is None:
-        from data_load import get_bitcoin_ohlcv_data, add_technical_indicators
-        df = get_bitcoin_ohlcv_data(days=30)
-        df = add_technical_indicators(df)
+        # Import here to avoid circular imports
+        from data_load import load_data
+        df = load_data()
     
     # Generate signals
     signals = generate_combined_signals(df)

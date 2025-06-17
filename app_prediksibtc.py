@@ -155,17 +155,6 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# Create a function to get real-time trading signals with caching
-@st.cache_data(ttl=300)  # Cache for 5 minutes
-def get_realtime_signals():
-    # Get fresh data with current price
-    fresh_data = load_data()
-    # Get trading recommendations based on technical analysis
-    trading_rec = get_trading_recommendation(fresh_data)
-    # Get advanced trading signals
-    advanced_signals = get_combined_trading_signals(fresh_data)
-    return trading_rec, advanced_signals, fresh_data
-
 # Get trading recommendations and signals
 trading_rec, advanced_signals, data = get_realtime_signals()
 
@@ -432,32 +421,22 @@ with tab1:
         # Calculate price changes for coloring
         data['Price_Change'] = data['Price'].diff()
         
-        # Create enhanced chart with Plotly
+        # Create candlestick chart with Plotly (Indodax style)
         fig = go.Figure()
         
-        # Add traces for price increases (green)
-        fig.add_trace(go.Scatter(
-            x=data[data['Price_Change'] >= 0]['Date'],
-            y=data[data['Price_Change'] >= 0]['Price'],
-            mode='lines',
-            line=dict(color='#66CC33', width=2),
-            name='Price Increase',
-            fill='tozeroy',
-            fillcolor='rgba(102, 204, 51, 0.2)'
+        # Add candlestick chart
+        fig.add_trace(go.Candlestick(
+            x=data['Date'],
+            open=data['Open'],
+            high=data['High'],
+            low=data['Low'],
+            close=data['Price'],  # Using 'Price' as close
+            increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
+            decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
+            name='BTC/IDR'
         ))
         
-        # Add traces for price decreases (red)
-        fig.add_trace(go.Scatter(
-            x=data[data['Price_Change'] < 0]['Date'],
-            y=data[data['Price_Change'] < 0]['Price'],
-            mode='lines',
-            line=dict(color='#CC3366', width=2),
-            name='Price Decrease',
-            fill='tozeroy',
-            fillcolor='rgba(204, 51, 102, 0.2)'
-        ))
-        
-        # Update layout
+        # Update layout with Indodax style
         fig.update_layout(
             title='',
             xaxis_title='Date',
@@ -466,6 +445,9 @@ with tab1:
             legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
             margin=dict(l=0, r=0, t=10, b=0),
             height=400,
+            plot_bgcolor='#131722',  # Dark background like Indodax
+            paper_bgcolor='#131722',
+            font=dict(color='#D9D9D9'),  # Light text for dark background
             xaxis=dict(
                 rangeselector=dict(
                     buttons=list([
@@ -473,10 +455,16 @@ with tab1:
                         dict(count=14, label="14d", step="day", stepmode="backward"),
                         dict(count=1, label="1m", step="month", stepmode="backward"),
                         dict(step="all")
-                    ])
+                    ]),
+                    bgcolor='#1E222D',
+                    font=dict(color='#D9D9D9')
                 ),
                 rangeslider=dict(visible=True),
-                type="date"
+                type="date",
+                gridcolor='#1E222D'  # Indodax grid color
+            ),
+            yaxis=dict(
+                gridcolor='#1E222D'  # Indodax grid color
             )
         )
         
@@ -505,32 +493,31 @@ with tab1:
     with col2:
         st.markdown("<h4>Predicted Bitcoin Prices</h4>", unsafe_allow_html=True)
         
-        # Create enhanced prediction chart with Plotly
+        # Create prediction chart with Plotly (Indodax style)
         fig = go.Figure()
         
-        # Add traces for predicted price increases (green)
-        fig.add_trace(go.Scatter(
-            x=prediction_data[prediction_data['Price_Change'] >= 0]['Date'],
-            y=prediction_data[prediction_data['Price_Change'] >= 0]['Predicted_Price'],
-            mode='lines',
-            line=dict(color='#66CC33', width=2),
-            name='Predicted Increase',
-            fill='tozeroy',
-            fillcolor='rgba(102, 204, 51, 0.2)'
+        # Create synthetic OHLC data for predictions
+        prediction_data['Open'] = prediction_data['Predicted_Price'].shift(1)
+        prediction_data.loc[0, 'Open'] = data['Price'].iloc[-1]  # Use last actual price for first open
+        
+        # Create High and Low based on volatility
+        volatility = prediction_data['Predicted_Price'] * volatility_factor * 2
+        prediction_data['High'] = prediction_data['Predicted_Price'] + volatility
+        prediction_data['Low'] = prediction_data['Predicted_Price'] - volatility
+        
+        # Add candlestick chart for predictions
+        fig.add_trace(go.Candlestick(
+            x=prediction_data['Date'],
+            open=prediction_data['Open'],
+            high=prediction_data['High'],
+            low=prediction_data['Low'],
+            close=prediction_data['Predicted_Price'],
+            increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
+            decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
+            name='Predicted BTC/IDR'
         ))
         
-        # Add traces for predicted price decreases (red)
-        fig.add_trace(go.Scatter(
-            x=prediction_data[prediction_data['Price_Change'] < 0]['Date'],
-            y=prediction_data[prediction_data['Price_Change'] < 0]['Predicted_Price'],
-            mode='lines',
-            line=dict(color='#CC3366', width=2),
-            name='Predicted Decrease',
-            fill='tozeroy',
-            fillcolor='rgba(204, 51, 102, 0.2)'
-        ))
-        
-        # Update layout
+        # Update layout with Indodax style
         fig.update_layout(
             title='',
             xaxis_title='Date',
@@ -539,6 +526,9 @@ with tab1:
             legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
             margin=dict(l=0, r=0, t=10, b=0),
             height=400,
+            plot_bgcolor='#131722',  # Dark background like Indodax
+            paper_bgcolor='#131722',
+            font=dict(color='#D9D9D9'),  # Light text for dark background
             xaxis=dict(
                 rangeselector=dict(
                     buttons=list([
@@ -546,10 +536,16 @@ with tab1:
                         dict(count=14, label="14d", step="day", stepmode="backward"),
                         dict(count=30, label="30d", step="day", stepmode="backward"),
                         dict(step="all")
-                    ])
+                    ]),
+                    bgcolor='#1E222D',
+                    font=dict(color='#D9D9D9')
                 ),
                 rangeslider=dict(visible=True),
-                type="date"
+                type="date",
+                gridcolor='#1E222D'  # Indodax grid color
+            ),
+            yaxis=dict(
+                gridcolor='#1E222D'  # Indodax grid color
             )
         )
         
@@ -558,35 +554,28 @@ with tab1:
     # Combined historical and predicted view
     st.markdown("<h4>Combined View: Historical and Predicted Prices</h4>", unsafe_allow_html=True)
     
-    # Create combined chart
+    # Create combined chart with candlesticks
     fig = go.Figure()
     
-    # Add historical data
-    fig.add_trace(go.Scatter(
+    # Add historical data as candlesticks
+    fig.add_trace(go.Candlestick(
         x=data['Date'],
-        y=data['Price'],
-        mode='lines',
-        name='Historical Price',
-        line=dict(color='#3366CC', width=2)
+        open=data['Open'],
+        high=data['High'],
+        low=data['Low'],
+        close=data['Price'],
+        increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
+        decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
+        name='Historical BTC/IDR'
     ))
     
-    # Add prediction data with color based on price change
-    # For increasing segments
+    # Add prediction data as a line
     fig.add_trace(go.Scatter(
-        x=prediction_data[prediction_data['Price_Change'] >= 0]['Date'],
-        y=prediction_data[prediction_data['Price_Change'] >= 0]['Predicted_Price'],
+        x=prediction_data['Date'],
+        y=prediction_data['Predicted_Price'],
         mode='lines',
-        name='Predicted Increase',
-        line=dict(color='#66CC33', width=2, dash='dash')
-    ))
-    
-    # For decreasing segments
-    fig.add_trace(go.Scatter(
-        x=prediction_data[prediction_data['Price_Change'] < 0]['Date'],
-        y=prediction_data[prediction_data['Price_Change'] < 0]['Predicted_Price'],
-        mode='lines',
-        name='Predicted Decrease',
-        line=dict(color='#CC3366', width=2, dash='dash')
+        name='Predicted Price',
+        line=dict(color='#3366CC', width=2, dash='dash')
     ))
     
     # Add current price marker
@@ -598,7 +587,7 @@ with tab1:
         name='Current Price'
     ))
     
-    # Update layout
+    # Update layout with Indodax style
     fig.update_layout(
         title='',
         xaxis_title='Date',
@@ -607,6 +596,9 @@ with tab1:
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
         margin=dict(l=0, r=0, t=10, b=0),
         height=400,
+        plot_bgcolor='#131722',  # Dark background like Indodax
+        paper_bgcolor='#131722',
+        font=dict(color='#D9D9D9'),  # Light text for dark background
         xaxis=dict(
             rangeselector=dict(
                 buttons=list([
@@ -614,11 +606,41 @@ with tab1:
                     dict(count=14, label="14d", step="day", stepmode="backward"),
                     dict(count=30, label="30d", step="day", stepmode="backward"),
                     dict(step="all")
-                ])
+                ]),
+                bgcolor='#1E222D',
+                font=dict(color='#D9D9D9')
             ),
             rangeslider=dict(visible=True),
-            type="date"
+            type="date",
+            gridcolor='#1E222D'  # Indodax grid color
+        ),
+        yaxis=dict(
+            gridcolor='#1E222D'  # Indodax grid color
         )
+    )
+    
+    # Add volume bars at the bottom (Indodax style)
+    fig.add_trace(go.Bar(
+        x=data['Date'],
+        y=data['Volume'],
+        name='Volume',
+        marker=dict(
+            color='rgba(100, 100, 255, 0.3)',
+            line=dict(color='rgba(100, 100, 255, 0.5)', width=0.5)
+        ),
+        yaxis='y2'
+    ))
+    
+    # Add secondary y-axis for volume
+    fig.update_layout(
+        yaxis2=dict(
+            title='Volume',
+            overlaying='y',
+            side='right',
+            showgrid=False,
+            domain=[0, 0.2]
+        ),
+        yaxis=dict(domain=[0.2, 1.0])
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -677,30 +699,37 @@ with tab2:
         buying_pressure = advanced_signals['order_flow']['buying_pressure']
         selling_pressure = advanced_signals['order_flow']['selling_pressure']
         
-        # Create buying/selling pressure gauge
+        # Create buying/selling pressure gauge with Indodax style
         fig = go.Figure()
         
         fig.add_trace(go.Indicator(
             mode = "gauge+number",
             value = buying_pressure / (buying_pressure + selling_pressure) * 100,
-            title = {'text': "Buying vs Selling Pressure"},
+            title = {'text': "Buying vs Selling Pressure", 'font': {'color': '#D9D9D9'}},
             gauge = {
-                'axis': {'range': [0, 100]},
+                'axis': {'range': [0, 100], 'tickfont': {'color': '#D9D9D9'}},
                 'bar': {'color': "#3366CC"},
                 'steps': [
-                    {'range': [0, 40], 'color': "#CC3366"},
+                    {'range': [0, 40], 'color': "#EF5350"},  # Indodax red
                     {'range': [40, 60], 'color': "#FFA500"},
-                    {'range': [60, 100], 'color': "#66CC33"}
+                    {'range': [60, 100], 'color': "#26A69A"}  # Indodax green
                 ],
                 'threshold': {
-                    'line': {'color': "black", 'width': 4},
+                    'line': {'color': "white", 'width': 4},
                     'thickness': 0.75,
                     'value': 50
-                }
-            }
+                },
+                'bgcolor': '#131722',  # Dark background like Indodax
+            },
+            number = {'font': {'color': '#D9D9D9'}}
         ))
         
-        fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+        fig.update_layout(
+            height=250, 
+            margin=dict(l=20, r=20, t=30, b=20),
+            paper_bgcolor='#131722',  # Dark background like Indodax
+            plot_bgcolor='#131722'
+        )
         st.plotly_chart(fig, use_container_width=True)
         
         # Display divergence if any
@@ -1004,7 +1033,7 @@ with tab4:
     
     # Highlight Bitcoin row
     def highlight_btc(row):
-        return ['background-color: #000080' if row['Ticker'] == 'BTC-USD' else '' for _ in row]
+        return ['background-color: #E2F0FB' if row['Ticker'] == 'BTC-USD' else '' for _ in row]
     
     styled_allocation = allocation.style.apply(highlight_btc, axis=1)
     st.table(styled_allocation)
@@ -1026,7 +1055,7 @@ with tab4:
         
         # Highlight Bitcoin row
         def highlight_btc_index(df):
-            return ['background-color: #000080' if idx == 'BTC-USD' else '' for idx in df.index]
+            return ['background-color: #E2F0FB' if idx == 'BTC-USD' else '' for idx in df.index]
         
         styled_returns = returns_df.style.apply(highlight_btc_index, axis=0)
         st.table(styled_returns)
@@ -1058,7 +1087,7 @@ with tab4:
     
     performance_df = pd.DataFrame(performance_data)
     
-    # Create bar chart
+    # Create bar chart with Indodax style
     fig = go.Figure()
     
     # Add Bitcoin bar
@@ -1066,7 +1095,7 @@ with tab4:
         x=[performance_df['Asset'][0]],
         y=[performance_df['Return'][0] * 100],
         name='Bitcoin',
-        marker_color='#3366CC'
+        marker_color='#F7931A'  # Bitcoin orange
     ))
     
     # Add other assets
@@ -1074,17 +1103,22 @@ with tab4:
         x=performance_df['Asset'][1:],
         y=[r * 100 for r in performance_df['Return'][1:]],
         name='Other Assets',
-        marker_color='#66CC33'
+        marker_color='#26A69A'  # Indodax green
     ))
     
-    # Update layout
+    # Update layout with Indodax style
     fig.update_layout(
         title='',
         xaxis_title='Asset',
         yaxis_title='Annualized Return (%)',
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
         margin=dict(l=0, r=0, t=10, b=0),
-        height=300
+        height=300,
+        plot_bgcolor='#131722',  # Dark background like Indodax
+        paper_bgcolor='#131722',
+        font=dict(color='#D9D9D9'),  # Light text for dark background
+        xaxis=dict(gridcolor='#1E222D'),  # Indodax grid color
+        yaxis=dict(gridcolor='#1E222D')  # Indodax grid color
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -1092,9 +1126,11 @@ with tab4:
 with tab5:
     # About section
     st.markdown("<h3>About This App</h3>", unsafe_allow_html=True)
-    st.write("""
-    This Bitcoin Price Prediction App uses advanced trading techniques to forecast future Bitcoin prices and provide trading signals.
-    
+    import textwrap
+
+    st.write(textwrap.dedent("""
+        This Bitcoin Price Prediction App uses advanced trading techniques to forecast future Bitcoin prices and provide trading signals.
+
     **Features:**
     - Real-time Bitcoin price data from CoinMarketCap
     - Price action analysis with pattern recognition
@@ -1104,25 +1140,25 @@ with tab5:
     - Backtested trading signals with performance metrics
     - Investment calculator with risk/reward analysis
     - Portfolio analysis with Bitcoin and traditional assets
-    """)
-    
+    """))
+
     st.markdown("<h4>Trading Techniques Used</h4>", unsafe_allow_html=True)
-    st.write("""
-    1. **Price Action Analysis**: Identifies chart patterns like double tops/bottoms and head & shoulders
-    2. **Volume Profile**: Analyzes trading volume at different price levels to identify support/resistance
-    3. **Order Flow Analysis**: Examines buying vs selling pressure and detects divergences
-    4. **Machine Learning**: Predicts future prices based on historical patterns
-    5. **Backtesting**: Tests trading strategies on historical data to measure performance
-    """)
-    
+    st.write(textwrap.dedent("""
+        1. **Price Action Analysis**: Identifies chart patterns like double tops/bottoms and head & shoulders
+        2. **Volume Profile**: Analyzes trading volume at different price levels to identify support/resistance
+        3. **Order Flow Analysis**: Examines buying vs selling pressure and detects divergences
+        4. **Machine Learning**: Predicts future prices based on historical patterns
+        5. **Backtesting**: Tests trading strategies on historical data to measure performance
+    """))
+
     st.markdown("<h4>How It Works</h4>", unsafe_allow_html=True)
-    st.write("""
-    1. The app fetches real-time Bitcoin price data
-    2. Advanced analysis techniques identify patterns, support/resistance levels, and order flow signals
-    3. Trading signals are generated based on multiple analysis techniques
-    4. Signals are backtested to measure historical performance
-    5. Investment recommendations are provided with specific entry, target, and stop-loss prices
-    """)
+    st.write(textwrap.dedent("""
+        1. The app fetches real-time Bitcoin price data
+        2. Advanced analysis techniques identify patterns, support/resistance levels, and order flow signals
+        3. Trading signals are generated based on multiple analysis techniques
+        4. Signals are backtested to measure historical performance
+        5. Investment recommendations are provided with specific entry, target, and stop-loss prices
+    """))
 
 # Risk disclaimer in sidebar with better styling
 st.sidebar.markdown("---")

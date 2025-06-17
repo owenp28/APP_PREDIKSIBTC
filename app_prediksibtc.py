@@ -7,7 +7,7 @@ import time
 from data_load import load_data, get_trading_recommendation, get_current_bitcoin_price
 from train_model import preprocess_data, train_model
 from prediction_btc import make_predictions
-from trading_signals import get_combined_trading_signals
+# from trading_signals import get_combined_trading_signals
 
 # Set page configuration and custom theme
 st.set_page_config(
@@ -424,17 +424,40 @@ with tab1:
         # Create candlestick chart with Plotly (Indodax style)
         fig = go.Figure()
         
-        # Add candlestick chart
-        fig.add_trace(go.Candlestick(
-            x=data['Date'],
-            open=data['Open'],
-            high=data['High'],
-            low=data['Low'],
-            close=data['Price'],  # Using 'Price' as close
-            increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
-            decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
-            name='BTC/IDR'
-        ))
+        # Check if OHLC data exists, otherwise create synthetic data
+        if all(col in data.columns for col in ['Open', 'High', 'Low']):
+            # Use existing OHLC data
+            fig.add_trace(go.Candlestick(
+                x=data['Date'],
+                open=data['Open'],
+                high=data['High'],
+                low=data['Low'],
+                close=data['Price'],  # Using 'Price' as close
+                increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
+                decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
+                name='BTC/IDR'
+            ))
+        else:
+            # Create synthetic OHLC data
+            data['Open'] = data['Price'].shift(1)
+            data.loc[data.index[0], 'Open'] = data['Price'].iloc[0]  # First open equals first close
+            
+            # Create High and Low based on Price with some volatility
+            volatility = data['Price'] * 0.01  # 1% volatility
+            data['High'] = data['Price'] + volatility
+            data['Low'] = data['Price'] - volatility
+            
+            # Now create the candlestick chart
+            fig.add_trace(go.Candlestick(
+                x=data['Date'],
+                open=data['Open'],
+                high=data['High'],
+                low=data['Low'],
+                close=data['Price'],
+                increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
+                decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
+                name='BTC/IDR'
+            ))
         
         # Update layout with Indodax style
         fig.update_layout(
@@ -557,17 +580,31 @@ with tab1:
     # Create combined chart with candlesticks
     fig = go.Figure()
     
-    # Add historical data as candlesticks
-    fig.add_trace(go.Candlestick(
-        x=data['Date'],
-        open=data['Open'],
-        high=data['High'],
-        low=data['Low'],
-        close=data['Price'],
-        increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
-        decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
-        name='Historical BTC/IDR'
-    ))
+    # Check if OHLC data exists, otherwise use the data we created earlier
+    if all(col in data.columns for col in ['Open', 'High', 'Low']):
+        # Add historical data as candlesticks
+        fig.add_trace(go.Candlestick(
+            x=data['Date'],
+            open=data['Open'],
+            high=data['High'],
+            low=data['Low'],
+            close=data['Price'],
+            increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
+            decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
+            name='Historical BTC/IDR'
+        ))
+    else:
+        # We should already have synthetic OHLC data from earlier
+        fig.add_trace(go.Candlestick(
+            x=data['Date'],
+            open=data['Open'],
+            high=data['High'],
+            low=data['Low'],
+            close=data['Price'],
+            increasing=dict(line=dict(color='#26A69A'), fillcolor='#26A69A'),  # Indodax green
+            decreasing=dict(line=dict(color='#EF5350'), fillcolor='#EF5350'),  # Indodax red
+            name='Historical BTC/IDR'
+        ))
     
     # Add prediction data as a line
     fig.add_trace(go.Scatter(

@@ -280,3 +280,51 @@ def add_technical_indicators(df):
     data['Trade_Signal'] = (data['MA_Signal'] + data['RSI_Signal'] + data['MACD_Signal']) / 3
     
     return data
+
+def get_trading_recommendation(df):
+    """Generate specific trading recommendations based on technical analysis and price action"""
+    from advanced_analysis import get_current_signals
+    
+    # Get advanced signals
+    signals, _ = get_current_signals(df)
+    
+    # Get the most recent data
+    recent_data = df.iloc[-5:].copy()
+    
+    # Calculate current market conditions
+    current_price = recent_data['Price'].iloc[-1]
+    rsi = recent_data['RSI'].iloc[-1]
+    macd_hist = recent_data['MACD_Hist'].iloc[-1]
+    
+    # Use signals from advanced analysis
+    action = signals['action']
+    optimal_buy = signals['entry_price'] if signals['signal_strength'] >= 0 else signals['target_price']
+    optimal_sell = signals['entry_price'] if signals['signal_strength'] <= 0 else signals['target_price']
+    stop_loss = signals['stop_loss']
+    
+    # Calculate take profit levels
+    take_profit_short = optimal_sell if signals['signal_strength'] >= 0 else optimal_buy
+    take_profit_long = take_profit_short * 1.05 if signals['signal_strength'] >= 0 else take_profit_short * 0.95
+    
+    # Add timestamp for when recommendation was generated
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Create recommendation dictionary
+    recommendation = {
+        "action": action,
+        "optimal_buy": optimal_buy,
+        "optimal_sell": optimal_sell,
+        "stop_loss": stop_loss,
+        "take_profit_short": take_profit_short,
+        "take_profit_long": take_profit_long,
+        "rsi": rsi,
+        "macd_histogram": macd_hist,
+        "pattern": signals['latest_pattern']['pattern'] if signals['latest_pattern'] else None,
+        "risk_reward": signals['risk_reward'],
+        "support_levels": signals['support_levels'],
+        "resistance_levels": signals['resistance_levels'],
+        "backtest_performance": signals['backtest_performance'],
+        "last_updated": timestamp
+    }
+    
+    return recommendation

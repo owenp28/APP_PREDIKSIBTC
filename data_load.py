@@ -5,38 +5,33 @@ import numpy as np
 import time
 
 def get_current_bitcoin_price():
-    """Get the current Bitcoin price from CoinMarketCap"""
+    """Get the current Bitcoin price from Indodax BTCIDR market"""
     try:
-        # Use CoinMarketCap API (public endpoint)
-        url = "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/chart"
-        params = {
-            "id": "1",  # Bitcoin ID
-            "range": "1D"  # Last 24 hours
-        }
+        # Use Indodax API for BTCIDR
+        url = "https://indodax.com/api/ticker/btcidr"
         
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
         
-        response = requests.get(url, params=params, headers=headers)
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
         
         data = response.json()
         
-        # Get the latest price point
-        points = data.get("data", {}).get("points", {})
-        if points:
-            # Get the latest timestamp (should be the largest one)
-            latest_timestamp = max(points.keys())
-            latest_price = points[latest_timestamp]["v"][0]
-            return latest_price
+        # Get the latest price (in IDR)
+        latest_price_idr = float(data.get("ticker", {}).get("last", 0))
         
-        # If we couldn't get the price from CoinMarketCap, try CoinGecko as backup
-        return get_bitcoin_price_from_coingecko()
+        # Convert IDR to USD (approximate conversion - in a real app you'd use a currency API)
+        # Using a fixed rate for simplicity - you might want to use a real-time exchange rate
+        idr_to_usd_rate = 0.000064  # Approximate rate, update as needed
+        latest_price_usd = latest_price_idr * idr_to_usd_rate
+        
+        return latest_price_usd
         
     except Exception as e:
-        print(f"Error fetching current Bitcoin price from CoinMarketCap: {e}")
-        # Try CoinGecko as backup
+        print(f"Error fetching current Bitcoin price from Indodax: {e}")
+        # Fall back to CoinGecko as backup
         return get_bitcoin_price_from_coingecko()
 
 def get_bitcoin_price_from_coingecko():
@@ -58,95 +53,204 @@ def get_bitcoin_price_from_coingecko():
         print(f"Error fetching current Bitcoin price from CoinGecko: {e}")
         return 50000  # Default fallback price
 
-def load_data():
-    # Use CoinGecko API to get real Bitcoin data (free, no API key required)
-    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-    
-    # Get data for last 30 days (in unix milliseconds)
-    days = 30
-    params = {
-        "vs_currency": "usd",
-        "days": days,
-        "interval": "daily"
-    }
-    
+def get_bitcoin_ohlcv_data(days=30, interval='1d'):
+    """Get Bitcoin OHLCV (Open, High, Low, Close, Volume) data from Indodax BTCIDR market"""
     try:
+        # Use Indodax API for BTCIDR trade history
+        url = "https://indodax.com/api/btcidr/trades"
+        
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # trades_data = response.json()  # Not used
+        
+        # Get chart data from Indodax
+        chart_url = "https://indodax.com/tradingview/history"
+        params = {
+            "symbol": "BTCIDR",
+            "resolution": "D",  # Daily resolution
+            "from": int(time.time()) - (days * 86400),  # days ago in seconds
+            "to": int(time.time())  # current time
+        }
+        chart_response = requests.get(chart_url, params=params)
+        chart_response.raise_for_status()
+        
+        chart_data = chart_response.json()
+        
+        # Create DataFrame from chart data
+        df = pd.DataFrame({
+            'Date': pd.to_datetime(chart_data['t'], unit='s'),
+            'Open': chart_data['o'],
+            'High': chart_data['h'],
+            'Low': chart_data['l'],
+            'Close': chart_data['c'],
+            'Volume': chart_data['v']
+        })
+        
+        # Add Price column (same as Close for consistency with previous code)
+        df['Price'] = df['Close']
+        
+        # Calculate buy/sell volume based on price movement
+        df['BuyVolume'] = np.where(df['Close'] >= df['Open'], df['Volume'], 0)
+        df['SellVolume'] = np.where(df['Close'] < df['Open'], df['Volume'], 0)
+        
+        # Convert IDR to USD for consistency with the rest of the app
+        # Using a fixed rate for simplicity - you might want to use a real-time exchange rate
+        idr_to_usd_rate = 0.000064  # Approximate rate, update as needed
+        
+        for col in ['Open', 'High', 'Low', 'Close', 'Price']:
+            df[col] = df[col] * idr_to_usd_rate
+        
+        # Add placeholder for open interest
+        df['OpenInterest'] = 0
+        
+        return df
+    
+    except Exception as e:
+        print(f"Error fetching OHLCV data from Indodax: {e}")
+        # Fall back to CoinGecko
+        return get_bitcoin_ohlcv_from_coingecko(days)
+
+def get_bitcoin_ohlcv_from_coingecko(days=30):
+    """Get Bitcoin OHLCV data from CoinGecko as a backup"""
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/bitcoin/ohlc"
+        params = {
+            "vs_currency": "usd",
+            "days": days
+        }
+        
         response = requests.get(url, params=params)
-        response.raise_for_status()  # Raise exception for 4XX/5XX responses
+        response.raise_for_status()
         
         data = response.json()
         
-        # Extract price data (timestamp, price)
-        price_data = data.get("prices", [])
-        volume_data = data.get("total_volumes", [])
+        # Convert to DataFrame
+        df = pd.DataFrame(data, columns=['timestamp', 'Open', 'High', 'Low', 'Close'])
         
-        if price_data:
-            # Convert to DataFrame
-            df = pd.DataFrame(price_data, columns=["timestamp", "Price"])
-            
-            # Add volume data
-            volume_df = pd.DataFrame(volume_data, columns=["timestamp", "Volume"])
-            df = pd.merge(df, volume_df, on="timestamp")
-            
-            # Convert timestamp to datetime
-            df["Date"] = pd.to_datetime(df["timestamp"], unit="ms")
-            df = df[["Date", "Price", "Volume"]]  # Keep only needed columns
-            
-            # Update the latest price with real-time data from CoinMarketCap
-            current_price = get_current_bitcoin_price()
-            df.loc[df.index[-1], "Price"] = current_price
-            
-            # Add technical indicators
-            df = add_technical_indicators(df)
-            
-            return df
-        else:
-            raise ValueError("No price data returned from API")
-            
+        # Convert timestamp to datetime
+        df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df = df.drop('timestamp', axis=1)
+        
+        # Add Price column (same as Close for consistency)
+        df['Price'] = df['Close']
+        
+        # Get volume data separately
+        volume_url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+        volume_params = {
+            "vs_currency": "usd",
+            "days": days,
+            "interval": "daily"
+        }
+        
+        volume_response = requests.get(volume_url, params=volume_params)
+        volume_response.raise_for_status()
+        
+        volume_data = volume_response.json()
+        
+        # Extract volume data
+        volumes = volume_data.get("total_volumes", [])
+        volume_df = pd.DataFrame(volumes, columns=["timestamp", "Volume"])
+        volume_df['timestamp'] = pd.to_datetime(volume_df['timestamp'], unit='ms')
+        
+        # Merge with main dataframe
+        df = pd.merge_asof(df, volume_df, left_on='Date', right_on='timestamp', direction='nearest')
+        df = df.drop('timestamp', axis=1)
+        
+        # Estimate buy/sell volume based on price movement
+        df['BuyVolume'] = np.where(df['Close'] >= df['Open'], df['Volume'], 0)
+        df['SellVolume'] = np.where(df['Close'] < df['Open'], df['Volume'], 0)
+        
+        # Add placeholder for open interest
+        df['OpenInterest'] = 0
+        
+        return df
+    
     except Exception as e:
-        print(f"Error fetching data from CoinGecko: {e}")
+        print(f"Error fetching OHLCV data from CoinGecko: {e}")
+        return generate_simulated_ohlcv_data(days)
+
+def generate_simulated_ohlcv_data(days=30):
+    """Generate simulated OHLCV data as a last resort"""
+    today = datetime.datetime.now()
+    dates = pd.date_range(end=today, periods=days)
+    
+    # Generate random but somewhat realistic prices
+    np.random.seed(42)  # For reproducibility
+    base_price = get_current_bitcoin_price()  # Try to get current price
+    volatility = 0.03   # Daily volatility
+    
+    # Generate OHLCV data
+    data = []
+    prev_close = base_price
+    
+    for i in range(days):
+        # Random walk with drift
+        daily_return = np.random.normal(0.001, volatility)
+        close = prev_close * (1 + daily_return)
         
-        # Fallback to simulated data if API fails
-        today = datetime.datetime.now()
-        dates = pd.date_range(end=today, periods=30)
+        # Generate intraday range
+        high = close * (1 + abs(np.random.normal(0, volatility/2)))
+        low = close * (1 - abs(np.random.normal(0, volatility/2)))
         
-        # Generate random but somewhat realistic prices
-        np.random.seed(42)  # For reproducibility
-        base_price = get_current_bitcoin_price()  # Try to get current price
-        volatility = 0.03   # Daily volatility
+        # Ensure high is the highest and low is the lowest
+        if high < close:
+            high = close * 1.01
+        if low > close:
+            low = close * 0.99
         
-        prices = [base_price]
-        for i in range(1, 30):
-            # Random walk with drift
-            change = np.random.normal(0.001, volatility) # Slight upward drift
-            prices.append(prices[-1] * (1 + change))
+        # Generate open price
+        if i == 0:
+            open_price = prev_close
+        else:
+            open_price = prev_close * (1 + np.random.normal(0, volatility/3))
         
-        # Reverse the list so most recent price is last
-        prices.reverse()
+        # Ensure open is within high-low range
+        open_price = max(min(open_price, high), low)
         
-        # Generate volumes
-        volumes = np.random.normal(1000000000, 200000000, 30)
+        # Generate volume
+        volume = np.random.normal(1000000000, 200000000)
         
-        data = pd.DataFrame({
-            "Date": dates,
-            "Price": prices,
-            "Volume": volumes
+        data.append({
+            'Date': dates[i],
+            'Open': open_price,
+            'High': high,
+            'Low': low,
+            'Close': close,
+            'Price': close,
+            'Volume': volume,
+            'BuyVolume': volume if close >= open_price else 0,
+            'SellVolume': volume if close < open_price else 0,
+            'OpenInterest': 0
         })
         
-        # Add technical indicators
-        data = add_technical_indicators(data)
-        
-        return data
+        prev_close = close
+    
+    df = pd.DataFrame(data)
+    return df
+
+def load_data():
+    """Load Bitcoin price data with enhanced features from Indodax BTCIDR market"""
+    # Get OHLCV data from Indodax
+    df = get_bitcoin_ohlcv_data(days=30)
+    
+    # Add technical indicators
+    df = add_technical_indicators(df)
+    
+    return df
 
 def add_technical_indicators(df):
     """Add technical indicators to help with trading decisions"""
+    # Make a copy to avoid modifying the original
+    data = df.copy()
+    
     # Calculate moving averages
-    df['MA5'] = df['Price'].rolling(window=5).mean()
-    df['MA10'] = df['Price'].rolling(window=10).mean()
-    df['MA20'] = df['Price'].rolling(window=20).mean()
+    data['MA5'] = data['Price'].rolling(window=5).mean()
+    data['MA10'] = data['Price'].rolling(window=10).mean()
+    data['MA20'] = data['Price'].rolling(window=20).mean()
     
     # Calculate RSI (Relative Strength Index)
-    delta = df['Price'].diff()
+    delta = data['Price'].diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
     
@@ -154,85 +258,25 @@ def add_technical_indicators(df):
     avg_loss = loss.rolling(window=14).mean()
     
     rs = avg_gain / avg_loss
-    df['RSI'] = 100 - (100 / (1 + rs))
+    data['RSI'] = 100 - (100 / (1 + rs))
     
     # Calculate MACD (Moving Average Convergence Divergence)
-    df['EMA12'] = df['Price'].ewm(span=12, adjust=False).mean()
-    df['EMA26'] = df['Price'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = df['EMA12'] - df['EMA26']
-    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MACD_Hist'] = df['MACD'] - df['Signal']
+    data['EMA12'] = data['Price'].ewm(span=12, adjust=False).mean()
+    data['EMA26'] = data['Price'].ewm(span=26, adjust=False).mean()
+    data['MACD'] = data['EMA12'] - data['EMA26']
+    data['Signal'] = data['MACD'].ewm(span=9, adjust=False).mean()
+    data['MACD_Hist'] = data['MACD'] - data['Signal']
     
     # Calculate price momentum
-    df['Price_Change'] = df['Price'].pct_change() * 100
-    df['Volume_Change'] = df['Volume'].pct_change() * 100
+    data['Price_Change'] = data['Price'].pct_change() * 100
+    data['Volume_Change'] = data['Volume'].pct_change() * 100
     
     # Identify potential buy/sell signals
-    df['MA_Signal'] = np.where(df['MA5'] > df['MA20'], 1, -1)  # 1 for buy, -1 for sell
-    df['RSI_Signal'] = np.where(df['RSI'] < 30, 1, np.where(df['RSI'] > 70, -1, 0))
-    df['MACD_Signal'] = np.where(df['MACD'] > df['Signal'], 1, -1)
+    data['MA_Signal'] = np.where(data['MA5'] > data['MA20'], 1, -1)  # 1 for buy, -1 for sell
+    data['RSI_Signal'] = np.where(data['RSI'] < 30, 1, np.where(data['RSI'] > 70, -1, 0))
+    data['MACD_Signal'] = np.where(data['MACD'] > data['Signal'], 1, -1)
     
     # Combined signal (simple average of all signals)
-    df['Trade_Signal'] = (df['MA_Signal'] + df['RSI_Signal'] + df['MACD_Signal']) / 3
+    data['Trade_Signal'] = (data['MA_Signal'] + data['RSI_Signal'] + data['MACD_Signal']) / 3
     
-    return df
-
-def get_trading_recommendation(df):
-    """Generate specific trading recommendations based on technical analysis"""
-    # Get the most recent data
-    recent_data = df.iloc[-5:].copy()
-    
-    # Calculate current market conditions
-    current_price = recent_data['Price'].iloc[-1]
-    rsi = recent_data['RSI'].iloc[-1]
-    macd_hist = recent_data['MACD_Hist'].iloc[-1]
-    
-    # Calculate optimal buy and sell prices
-    optimal_buy = current_price * 0.98  # Default: 2% below current
-    optimal_sell = current_price * 1.02  # Default: 2% above current
-    
-    # Adjust based on technical indicators
-    if rsi < 30:  # Oversold
-        optimal_buy = current_price  # Buy now
-        optimal_sell = current_price * 1.05  # Target 5% gain
-    elif rsi > 70:  # Overbought
-        optimal_buy = current_price * 0.95  # Wait for 5% drop
-        optimal_sell = current_price  # Sell now
-    
-    # Adjust based on MACD
-    if macd_hist > 0 and macd_hist > df['MACD_Hist'].iloc[-2]:  # Rising MACD histogram
-        optimal_sell = max(optimal_sell, current_price * 1.03)  # Expect more upside
-    elif macd_hist < 0 and macd_hist < df['MACD_Hist'].iloc[-2]:  # Falling MACD histogram
-        optimal_buy = min(optimal_buy, current_price * 0.97)  # Expect more downside
-    
-    # Calculate stop loss
-    stop_loss = optimal_buy * 0.95  # 5% below buy price
-    
-    # Calculate take profit levels
-    take_profit_short = optimal_sell
-    take_profit_long = optimal_sell * 1.05
-    
-    # Generate trading recommendation
-    avg_signal = recent_data['Trade_Signal'].mean()
-    
-    if avg_signal > 0.5:
-        action = "Strong Buy"
-    elif avg_signal > 0:
-        action = "Consider Buy"
-    elif avg_signal > -0.5:
-        action = "Hold"
-    else:
-        action = "Consider Sell"
-    
-    recommendation = {
-        "action": action,
-        "optimal_buy": optimal_buy,
-        "optimal_sell": optimal_sell,
-        "stop_loss": stop_loss,
-        "take_profit_short": take_profit_short,
-        "take_profit_long": take_profit_long,
-        "rsi": rsi,
-        "macd_histogram": macd_hist
-    }
-    
-    return recommendation
+    return data

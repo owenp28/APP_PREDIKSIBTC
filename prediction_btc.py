@@ -15,11 +15,11 @@ def make_predictions(model, scaler, features, days_ahead=30, last_prices=None):
     # Initialize with the last known prices if provided
     if last_prices is not None and len(last_prices) >= 5:
         for i in range(1, 6):
-            future_df[f'Price_Lag_{i}'] = last_prices[-i]
+            future_df[f'Price_Lag_{i}'] = float(last_prices[-i])
     else:
         # Use placeholder values
         for i in range(1, 6):
-            future_df[f'Price_Lag_{i}'] = 0
+            future_df[f'Price_Lag_{i}'] = 0.0
     
     # Make predictions one day at a time
     predictions = []

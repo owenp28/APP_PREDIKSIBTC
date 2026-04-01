@@ -218,9 +218,9 @@ def backtest_strategy(df, strategy_signals, initial_capital=10000):
     
     # Initialize portfolio metrics
     data['Position'] = 0
-    data['BTC_Holdings'] = 0
-    data['Cash'] = initial_capital
-    data['Portfolio_Value'] = initial_capital
+    data['BTC_Holdings'] = 0.0
+    data['Cash'] = float(initial_capital)
+    data['Portfolio_Value'] = float(initial_capital)
     
     # Execute trades based on signals
     position = 0

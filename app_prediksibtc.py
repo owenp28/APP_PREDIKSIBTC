@@ -21,6 +21,7 @@ def auto_refresh():
     # This function will be called by the auto-refresh mechanism
     st.cache_data.clear()
     st.experimental_rerun()
+    st.rerun()
 
 # Add auto-refresh option in sidebar
 with st.sidebar:
